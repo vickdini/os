@@ -8,7 +8,7 @@ header_start:
     ; header length
     dd header_end - header_start
     ; checksum
-    dd 100000000 - (0xE85250D6 + 0 + (header_end - header_start))
+    dd 0x100000000 - (0xE85250D6 + 0 + (header_end - header_start))
     ; end tag
     dw 0
     dw 0
