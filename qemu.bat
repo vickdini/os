@@ -1,0 +1,1 @@
+"C:\Program Files\qemu\qemu-system-x86_64.exe" -cdrom "\\wsl.localhost\Ubuntu-20.04\home\vick\os\docker\dist\x86_64\kernel.iso"
