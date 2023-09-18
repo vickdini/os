@@ -28,8 +28,6 @@ enum PrintColor
     White = 15,
 }
 
-//struct Char* buffer = (struct Char*) 0xb8000;
-
 static mut BUFFER: *mut Char = 0xb8000 as *mut Char;
 
 static mut COL: usize = 0;
@@ -62,6 +60,58 @@ fn print_clear()
     }
 }
 
+unsafe fn print_newline()
+{
+    COL = 0;
+
+    if ROW < NUM_ROWS - 1
+    {
+        ROW += 1;
+        return;
+    }
+
+    for row_id in 1..NUM_ROWS
+    {
+        for col_id in 0..NUM_COLS
+        {
+            let character = *(BUFFER.wrapping_add(col_id + NUM_COLS * row_id));
+            *(BUFFER.wrapping_add(col_id + NUM_COLS * (row_id - 1))) = character;
+        }
+    }
+
+    clear_row(NUM_ROWS - 1);
+}
+
+unsafe fn print_char(character: char)
+{
+    if character == '\n'
+    {
+        print_newline();
+        return;
+    }
+
+    if COL > NUM_COLS
+    {
+        print_newline();
+    }
+ 
+    *(BUFFER.wrapping_add(COL + NUM_COLS * ROW)) = Char
+    {
+        character: character as u8,
+        color: COLOR,
+    };
+
+    COL += 1;
+}
+
+fn print_str(str: &str)
+{
+    for character in str.chars()
+    {
+        unsafe{ print_char(character); }
+    }
+}
+
 fn print_set_color(foreground: PrintColor, background: PrintColor)
 {
     unsafe
@@ -71,7 +121,7 @@ fn print_set_color(foreground: PrintColor, background: PrintColor)
 }
 
 fn main() {
-    //println!("Hello, world!");
     print_clear();
     print_set_color(PrintColor::Yellow, PrintColor::Black);
+    print_str("Welcome to Hydra in rust!\n");
 }
