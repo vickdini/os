@@ -1,7 +1,7 @@
-.PHONY: build-x86_64
-build-x86_64:
+.PHONY: build
+build:
 	cargo clean && \
-	cargo rustc --release -- --emit=obj && \
+	cargo build --target=./targets/x86_64/x86_64.json && \
 	mkdir -p dist/x86_64 && \
 	ld -n -o dist/x86_64/kernel.bin -T targets/x86_64/linker.ld $(wildcard target/release/deps/*.o) $(wildcard objects/x86_64/boot/*.o) && \
 	cp dist/x86_64/kernel.bin targets/x86_64/iso/boot/kernel.bin && \

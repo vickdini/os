@@ -1,3 +1,14 @@
+#![no_std]
+#![no_main]
+
+use core::panic::PanicInfo;
+
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> !
+{
+    loop {}
+}
+
 static NUM_COLS: usize = 80;
 static NUM_ROWS: usize = 25;
 
@@ -120,8 +131,12 @@ fn print_set_color(foreground: PrintColor, background: PrintColor)
     }
 }
 
-fn main() {
+#[no_mangle]
+pub extern fn kernel_main() -> !
+{
     print_clear();
     print_set_color(PrintColor::Yellow, PrintColor::Black);
     print_str("Welcome to Hydra in rust!\n");
+
+    loop{}
 }
