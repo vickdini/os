@@ -15,4 +15,4 @@ panic = "abort"
 panic = "abort"
 
 [build]
-target = "x86_64-hydra.json"
+target = "x86_64-unknown-none"
