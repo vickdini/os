@@ -50,7 +50,7 @@ fn assemble_file(file: &str, output_dir: &str)
         panic!("nasm failed with {}", status);
     }
 
-    println!("cargo:rustc-link-search=native={}", env::current_dir().unwrap().display().to_string() + "/" + &out_file);
+    println!("cargo:rustc-link-object={}", env::current_dir().unwrap().display().to_string() + "/" + &out_file);
 }
 
 #[cfg(target_arch = "x86_64")]
