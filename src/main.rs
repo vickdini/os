@@ -136,7 +136,7 @@ pub extern fn kernel_main() -> !
 {
     print_clear();
     print_set_color(PrintColor::Yellow, PrintColor::Black);
-    print_str("Welcome to Hydra in rust!\n");
+    print_str("Welcome to Hydra in Rust!\n");
 
     loop{}
 }

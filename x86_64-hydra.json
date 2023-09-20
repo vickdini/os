@@ -12,9 +12,9 @@
 	"features": "-mmx,-sse,+soft-float",
 	"relocation-model": "static",
 	"code-model": "large",
-	"linker-flavor": "ld.lld",
-	"linker": "rust-lld",
+	"linker-flavor": "ld",
+	"linker": "ld",
 	"pre-link-args": {
-		"ld.lld": ["--script=linker.ld"]
+		"ld": ["--script=linker.ld"]
 	}
 }
