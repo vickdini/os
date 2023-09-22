@@ -1,7 +1,7 @@
 use std::env;
 use std::process::Command;
 
-const ASM_DIR: &str = "src/impl/x86_64";
+const ASM_DIR: &str = "src/arch/x86_64";
 
 #[cfg(not(target_arch = "x86_64"))]
 fn assemble_file(file: &str, output_dir: &str) {}

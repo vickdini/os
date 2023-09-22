@@ -10,4 +10,3 @@ build: rust $(kernel_object_files) $(x86_64_object_files)
 	ld -n -o targets/x86_64/iso/boot/kernel.bin -T linker.ld $(kernel_object_files) $(x86_64_object_files) && \
 	mkdir -p dist/x86_64 && \
 	grub-mkrescue /usr/lib/grub/i386-pc -o dist/x86_64/kernel.iso targets/x86_64/iso
-	cargo clean
