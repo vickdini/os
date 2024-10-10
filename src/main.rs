@@ -3,15 +3,18 @@
 
 use core::panic::PanicInfo;
 
+// Panic handler to prevent the kernel from crashing silently
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> !
 {
     loop {}
 }
 
+// Constants for the VGA text buffer
 static NUM_COLS: usize = 80;
 static NUM_ROWS: usize = 25;
 
+// Character representation in the VGA buffer
 #[derive(Copy, Clone)]
 struct Char
 {
@@ -19,6 +22,7 @@ struct Char
     color: u8
 }
 
+// Color enumeration for foreground and background colors
 enum PrintColor
 {
     Black = 0,
@@ -39,12 +43,15 @@ enum PrintColor
     White = 15,
 }
 
+// VGA buffer address
 static mut BUFFER: *mut Char = 0xb8000 as *mut Char;
 
+// Cursor position and color settings
 static mut COL: usize = 0;
 static mut ROW: usize = 0;
 static mut COLOR: u8 = (PrintColor::White as u8) | (PrintColor::Black as u8) << 4;
 
+// Function to clear a specific row
 unsafe fn clear_row(row_id: usize)
 {
     let empty = Char
@@ -60,6 +67,7 @@ unsafe fn clear_row(row_id: usize)
     }
 }
 
+// Function to clear the entire screen
 fn print_clear()
 {
     for i in 0..NUM_ROWS
@@ -71,6 +79,7 @@ fn print_clear()
     }
 }
 
+// Function to print a newline character
 unsafe fn print_newline()
 {
     COL = 0;
@@ -93,6 +102,7 @@ unsafe fn print_newline()
     clear_row(NUM_ROWS - 1);
 }
 
+// Function to print a single character
 unsafe fn print_char(character: char)
 {
     if character == '\n'
@@ -115,6 +125,7 @@ unsafe fn print_char(character: char)
     COL += 1;
 }
 
+// Function to print a string
 fn print_str(str: &str)
 {
     for character in str.chars()
@@ -123,6 +134,7 @@ fn print_str(str: &str)
     }
 }
 
+// Function to set the text color
 fn print_set_color(foreground: PrintColor, background: PrintColor)
 {
     unsafe
@@ -131,6 +143,7 @@ fn print_set_color(foreground: PrintColor, background: PrintColor)
     }
 }
 
+// Main kernel function
 #[no_mangle]
 pub extern fn kernel_main() -> !
 {
