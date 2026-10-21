@@ -1,1 +1,1 @@
-"C:\Program Files\qemu\qemu-system-x86_64.exe" -cdrom "\\wsl.localhost\Ubuntu-20.04\home\vick\os\dist\x86_64\kernel.iso"
+"C:\Program Files\qemu\qemu-system-x86_64.exe" -bios "C:\Program Files\qemu\share\edk2-x86_64-code.fd" -cdrom "%~dp0dist\x86_64\kernel.iso"

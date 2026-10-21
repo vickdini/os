@@ -1,155 +1,41 @@
 #![no_std]
 #![no_main]
 
+use core::fmt::Write;
 use core::panic::PanicInfo;
+use uefi::prelude::*;
+use uefi::proto::console::text::Color;
 
-// Panic handler to prevent the kernel from crashing silently
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> !
-{
+fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-// Constants for the VGA text buffer
-static NUM_COLS: usize = 80;
-static NUM_ROWS: usize = 25;
-
-// Character representation in the VGA buffer
-#[derive(Copy, Clone)]
-struct Char
-{
-    character: u8,
-    color: u8
+pub fn print_clear() {
+    uefi::system::with_stdout(|stdout| {
+        let _ = stdout.clear();
+    });
 }
 
-// Color enumeration for foreground and background colors
-enum PrintColor
-{
-    Black = 0,
-    Blue = 1,
-    Green = 2,
-    Cyan = 3,
-    Red = 4,
-    Magenta = 5,
-    Brown = 6,
-    LightGray = 7,
-    DarkGray = 8,
-    LightBlue = 9,
-    LightGreen = 10,
-    LightCyan = 11,
-    LightRed = 12,
-    Pink = 13,
-    Yellow = 14,
-    White = 15,
+pub fn print_set_color(foreground: Color, background: Color) {
+    uefi::system::with_stdout(|stdout| {
+        let _ = stdout.set_color(foreground, background);
+    });
 }
 
-// VGA buffer address
-static mut BUFFER: *mut Char = 0xb8000 as *mut Char;
-
-// Cursor position and color settings
-static mut COL: usize = 0;
-static mut ROW: usize = 0;
-static mut COLOR: u8 = (PrintColor::White as u8) | (PrintColor::Black as u8) << 4;
-
-// Function to clear a specific row
-unsafe fn clear_row(row_id: usize)
-{
-    let empty = Char
-    {
-        character: ' ' as u8,
-        color: COLOR
-    };
- 
-
-    for col_id in 0..NUM_COLS
-    {
-        *(BUFFER.wrapping_add(col_id + NUM_COLS * row_id)) = empty;
-    }
+pub fn print_str(text: &str) {
+    uefi::system::with_stdout(|stdout| {
+        let _ = stdout.write_str(text);
+    });
 }
 
-// Function to clear the entire screen
-fn print_clear()
-{
-    for i in 0..NUM_ROWS
-    {
-        unsafe
-        {
-            clear_row(i);
-        }
-    }
-}
+#[entry]
+fn main() -> Status {
+    uefi::helpers::init().unwrap();
 
-// Function to print a newline character
-unsafe fn print_newline()
-{
-    COL = 0;
-
-    if ROW < NUM_ROWS - 1
-    {
-        ROW += 1;
-        return;
-    }
-
-    for row_id in 1..NUM_ROWS
-    {
-        for col_id in 0..NUM_COLS
-        {
-            let character = *(BUFFER.wrapping_add(col_id + NUM_COLS * row_id));
-            *(BUFFER.wrapping_add(col_id + NUM_COLS * (row_id - 1))) = character;
-        }
-    }
-
-    clear_row(NUM_ROWS - 1);
-}
-
-// Function to print a single character
-unsafe fn print_char(character: char)
-{
-    if character == '\n'
-    {
-        print_newline();
-        return;
-    }
-
-    if COL > NUM_COLS
-    {
-        print_newline();
-    }
- 
-    *(BUFFER.wrapping_add(COL + NUM_COLS * ROW)) = Char
-    {
-        character: character as u8,
-        color: COLOR,
-    };
-
-    COL += 1;
-}
-
-// Function to print a string
-fn print_str(str: &str)
-{
-    for character in str.chars()
-    {
-        unsafe{ print_char(character); }
-    }
-}
-
-// Function to set the text color
-fn print_set_color(foreground: PrintColor, background: PrintColor)
-{
-    unsafe
-    {
-        COLOR = (foreground as u8) + ((background as u8) << 4);
-    }
-}
-
-// Main kernel function
-#[no_mangle]
-pub extern fn kernel_main() -> !
-{
     print_clear();
-    print_set_color(PrintColor::Yellow, PrintColor::Black);
+    print_set_color(Color::Yellow, Color::Black);
     print_str("Welcome to Hydra in Rust!\nBy Vick Dini\n");
 
-    loop{}
+    loop {}
 }

@@ -1,15 +1,32 @@
-rust:
-	cargo clean && \
-	cargo rustc --release -- --emit=obj
+TARGET := x86_64-unknown-uefi
+EFI_BIN := target/$(TARGET)/release/hydra.efi
+DIST_DIR := dist/x86_64
+IMG := $(DIST_DIR)/hydra.img
+ISO := $(DIST_DIR)/kernel.iso
 
-kernel_object_files := $(shell find objects/x86_64/boot -name *.o)
-x86_64_object_files := $(shell find target/x86_64-hydra/release/deps -name *.o)
+.PHONY: all build clean
 
-.PHONY: build
-build: rust $(kernel_object_files) $(x86_64_object_files)
-	ld -n -o targets/x86_64/iso/boot/kernel.bin -T linker.ld $(kernel_object_files) $(x86_64_object_files) && \
-	mkdir -p targets/x86_64/iso/efi/boot && \
-	grub-mkimage -o targets/x86_64/iso/efi/boot/bootx64.efi -p /boot/grub -O x86_64-efi part_gpt part_msdos fat ext2 normal chain boot configfile linux multiboot2 && \
-	mkdir -p dist/x86_64 && \
-	cp -R /usr/lib/grub/x86_64-efi targets/x86_64/iso/boot/grub && \
-	grub-mkrescue -o dist/x86_64/kernel.iso --modules="biosdisk part_msdos part_gpt" --directory=/usr/lib/grub/i386-pc targets/x86_64/iso
+all: build
+
+$(EFI_BIN):
+	cargo build --release --target $(TARGET)
+
+build: $(EFI_BIN)
+	mkdir -p $(DIST_DIR)
+	cp $(EFI_BIN) $(DIST_DIR)/bootx64.efi
+	# Create FAT EFI disk image
+	dd if=/dev/zero of=$(IMG) bs=1M count=4
+	mkfs.vfat $(IMG)
+	mmd -i $(IMG) ::/EFI ::/EFI/BOOT
+	mcopy -i $(IMG) $(DIST_DIR)/bootx64.efi ::/EFI/BOOT/BOOTX64.EFI
+	# Create bootable UEFI ISO with El Torito EFI boot catalog
+	rm -rf $(DIST_DIR)/iso_root
+	mkdir -p $(DIST_DIR)/iso_root/EFI/BOOT
+	cp $(DIST_DIR)/bootx64.efi $(DIST_DIR)/iso_root/EFI/BOOT/BOOTX64.EFI
+	cp $(IMG) $(DIST_DIR)/iso_root/efiboot.img
+	xorriso -as mkisofs -V "HYDRA" -e efiboot.img -no-emul-boot -isohybrid-gpt-basdat -o $(ISO) $(DIST_DIR)/iso_root
+	rm -rf $(DIST_DIR)/iso_root
+
+clean:
+	cargo clean
+	rm -rf $(DIST_DIR)
