@@ -2028,6 +2028,36 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 - Supports command chaining with <code>;</code> (e.g. <code>mkdir /tmp/test; cd /tmp/test; touch a.txt; ls</code>).
 - Supports script arguments (<code>$1</code>, <code>$2</code>, <code>$0</code>) and last exit status (<code>$?</code>).
 - Pre-loaded with <code>/bin/demo.sh</code> demonstrating automated multi-command execution.</p>
+<h3>Terminal Scrolling via Scroll Lock &amp; Arrows</h3>
+<p>Hydra implements classic PC terminal scrolling using the <strong>Scroll Lock</strong> mode and arrow keys:</p>
+<ol>
+<li>
+<p><strong>When Scroll Lock is Active (<code>[SCROLL]</code> Prompt)</strong>:
+   - The shell freezes command execution and converts navigation keys into terminal viewport navigation:</p>
+<ul>
+<li><kbd>&uarr;</kbd> (Up Arrow): Scrolls the terminal screen <strong>UP</strong> line-by-line into the 512-line kernel scrollback buffer.</li>
+<li><kbd>&darr;</kbd> (Down Arrow): Scrolls the terminal screen <strong>DOWN</strong> line-by-line toward the active command prompt.</li>
+<li><kbd>Page Up</kbd>: Scrolls up by an entire screen page (<code>rows - 2</code> lines).</li>
+<li><kbd>Page Down</kbd>: Scrolls down by an entire screen page.</li>
+<li>When scrolled up into history, a cyan status banner displays the visible line range: <code>-- SCROLL LOCK [UP/DOWN or PgUp/PgDn to scroll, ESC/Ctrl+S to exit] (lines X-Y of Z) --</code>.</li>
+<li>Allows naturally reviewing long command outputs (like <code>help</code>, <code>cat</code>, <code>ls -l</code>, <code>history</code>, or kernel boot diagnostics) that scrolled off the top of the screen.</li>
+</ul>
+</li>
+<li>
+<p><strong>When Scroll Lock is Inactive (Normal Mode)</strong>:
+   - <kbd>&uarr;</kbd> (Up Arrow) cycles backward through the command history ring buffer.
+   - <kbd>&darr;</kbd> (Down Arrow) cycles forward through the command history ring buffer.
+   - Typing any printable character, pressing <kbd>Enter</kbd>, or hitting <kbd>Backspace</kbd> automatically snaps the viewport back to the active prompt.</p>
+</li>
+<li>
+<p><strong>Activating &amp; Toggling Scroll Lock</strong>:
+   - <strong>Keyboard Shortcut</strong>: Press <kbd>Ctrl+S</kbd> or <kbd>F12</kbd> in the shell to immediately toggle Scroll Lock on/off. The prompt dynamically reflects the mode (<code>hydra:/bin [SCROLL]&gt;</code> vs <code>hydra:/bin&gt;</code>).
+   - <strong>Direct Page Up</strong>: Pressing <kbd>Page Up</kbd> at the prompt automatically enables scrolling mode and pages up through previous screen contents.
+   - <strong>Shell Command</strong>: Run <code>scroll</code> (or <code>scroll on</code> / <code>scroll off</code>) from the command line.
+   - <strong>Exiting Scroll Mode</strong>: Press <kbd>Escape</kbd>, <kbd>Ctrl+S</kbd>, or <kbd>Ctrl+C</kbd> to return to normal prompt mode.
+   - <strong>VirtualBox Note</strong>: In VirtualBox with UEFI enabled, the firmware's <code>EFI_SIMPLE_TEXT_INPUT_PROTOCOL</code> does not generate key events for the physical <kbd>Scroll Lock</kbd> key (and host OS keyboard hooks often intercept or discard it). Use <kbd>Ctrl+S</kbd>, <kbd>F12</kbd>, or <code>scroll on</code> inside the VM for instant, reliable scrolling.</p>
+</li>
+</ol>
 <h3>Dynamic Working Directory Prompt</h3>
 <p>The shell tracks the current working directory dynamically in <code>ShellState</code> (initialized to <code>/bin</code>), displaying a standard Unix prompt:</p>
 <div class="codehilite"><pre><span></span><code>hydra:/bin&gt; pwd
@@ -2080,6 +2110,12 @@ hydra:/bin&gt;
 <td style="text-align: left;"><code>cat &lt;file&gt;</code></td>
 <td style="text-align: left;">Displays file contents verified with Fletcher-4.</td>
 <td style="text-align: left;">Path resolution relative to <code>cwd</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>more</code>, <code>less</code></td>
+<td style="text-align: left;"><code>more &lt;file&gt;</code></td>
+<td style="text-align: left;">Paginates file with interactive Up/Down and PageUp/PageDown scrolling.</td>
+<td style="text-align: left;"><code>less</code>, <code>page</code> aliases</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>write</code></td>
@@ -2323,6 +2359,11 @@ hydra:/bin&gt;
 <td style="text-align: left;"><code>color</code></td>
 <td style="text-align: left;"><code>color &lt;name&gt;</code></td>
 <td style="text-align: left;">Customizes shell prompt and text color (<code>cyan</code>, <code>green</code>, <code>yellow</code>, <code>red</code>, <code>white</code>, <code>magenta</code>, <code>blue</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>scroll</code></td>
+<td style="text-align: left;"><code>scroll [on\|off]</code></td>
+<td style="text-align: left;">Toggles or sets Scroll Lock mode for Up/Down arrow terminal scrolling.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>echo</code></td>

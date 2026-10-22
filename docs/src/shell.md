@@ -77,6 +77,31 @@ The shell provides a built-in script interpreter (`sh`, `source`, `.`) capable o
 - Supports script arguments (`$1`, `$2`, `$0`) and last exit status (`$?`).
 - Pre-loaded with `/bin/demo.sh` demonstrating automated multi-command execution.
 
+### Terminal Scrolling via Scroll Lock & Arrows
+
+Hydra implements classic PC terminal scrolling using the **Scroll Lock** mode and arrow keys:
+
+1. **When Scroll Lock is Active (`[SCROLL]` Prompt)**:
+   - The shell freezes command execution and converts navigation keys into terminal viewport navigation:
+     - <kbd>&uarr;</kbd> (Up Arrow): Scrolls the terminal screen **UP** line-by-line into the 512-line kernel scrollback buffer.
+     - <kbd>&darr;</kbd> (Down Arrow): Scrolls the terminal screen **DOWN** line-by-line toward the active command prompt.
+     - <kbd>Page Up</kbd>: Scrolls up by an entire screen page (`rows - 2` lines).
+     - <kbd>Page Down</kbd>: Scrolls down by an entire screen page.
+   - When scrolled up into history, a cyan status banner displays the visible line range: `-- SCROLL LOCK [UP/DOWN or PgUp/PgDn to scroll, ESC/Ctrl+S to exit] (lines X-Y of Z) --`.
+   - Allows naturally reviewing long command outputs (like `help`, `cat`, `ls -l`, `history`, or kernel boot diagnostics) that scrolled off the top of the screen.
+
+2. **When Scroll Lock is Inactive (Normal Mode)**:
+   - <kbd>&uarr;</kbd> (Up Arrow) cycles backward through the command history ring buffer.
+   - <kbd>&darr;</kbd> (Down Arrow) cycles forward through the command history ring buffer.
+   - Typing any printable character, pressing <kbd>Enter</kbd>, or hitting <kbd>Backspace</kbd> automatically snaps the viewport back to the active prompt.
+
+3. **Activating & Toggling Scroll Lock**:
+   - **Keyboard Shortcut**: Press <kbd>Ctrl+S</kbd> or <kbd>F12</kbd> in the shell to immediately toggle Scroll Lock on/off. The prompt dynamically reflects the mode (`hydra:/bin [SCROLL]> ` vs `hydra:/bin> `).
+   - **Direct Page Up**: Pressing <kbd>Page Up</kbd> at the prompt automatically enables scrolling mode and pages up through previous screen contents.
+   - **Shell Command**: Run `scroll` (or `scroll on` / `scroll off`) from the command line.
+   - **Exiting Scroll Mode**: Press <kbd>Escape</kbd>, <kbd>Ctrl+S</kbd>, or <kbd>Ctrl+C</kbd> to return to normal prompt mode.
+   - **VirtualBox Note**: In VirtualBox with UEFI enabled, the firmware's `EFI_SIMPLE_TEXT_INPUT_PROTOCOL` does not generate key events for the physical <kbd>Scroll Lock</kbd> key (and host OS keyboard hooks often intercept or discard it). Use <kbd>Ctrl+S</kbd>, <kbd>F12</kbd>, or `scroll on` inside the VM for instant, reliable scrolling.
+
 ### Dynamic Working Directory Prompt
 The shell tracks the current working directory dynamically in `ShellState` (initialized to `/bin`), displaying a standard Unix prompt:
 ```text
@@ -106,6 +131,7 @@ hydra:/bin>
 | `cd`, `chdir` | `cd [dir]` | Changes current working directory. Default: `/root`. | Relative paths, `..`, `.`, `/` |
 | `ls`, `dir` | `ls [path]` | Lists files and directories in ZFS. Default: `cwd`. | `-l` (long format), `-a` (show all) |
 | `cat`, `type` | `cat <file>` | Displays file contents verified with Fletcher-4. | Path resolution relative to `cwd` |
+| `more`, `less` | `more <file>` | Paginates file with interactive Up/Down and PageUp/PageDown scrolling. | `less`, `page` aliases |
 | `write` | `write <file> [text]` | Writes/appends data to a file via CoW transaction. | Path resolution relative to `cwd` |
 | `touch` | `touch <file...>` | Creates empty file or updates birth TXG / timestamp. | Path resolution relative to `cwd` |
 | `mkdir` | `mkdir <dir...>` | Creates one or more directories in ZFS. | `-p` (create parents without error) |
@@ -154,6 +180,7 @@ hydra:/bin>
 | `zfs` | `zfs <list\|snap\|cat\|write>` | Manages ZFS datasets (`hydrapool/root`, `hydrapool/bin`, `hydrapool/tmp`) and CoW snapshots. |
 | `efifs` | `efifs <ls\|cat\|run>` | Low-level firmware diagnostic tool inspecting raw UEFI FAT bootloader media. |
 | `color` | `color <name>` | Customizes shell prompt and text color (`cyan`, `green`, `yellow`, `red`, `white`, `magenta`, `blue`). |
+| `scroll` | `scroll [on\|off]` | Toggles or sets Scroll Lock mode for Up/Down arrow terminal scrolling. |
 | `echo` | `echo <text...>` | Echoes input arguments back to the screen. |
 | `clear`, `cls` | `clear` | Clears the active screen buffer and resets the cursor. |
 | `panic` | `panic` | Manually triggers the kernel panic handler to verify diagnostic output. |

@@ -32,14 +32,14 @@ pub use gnu_sys::{
     FalseCommand, SeqCommand, SleepCommand, TrueCommand, UnameCommand, WhoamiCommand, YesCommand,
 };
 pub use gnu_text::{
-    BasenameCommand, DirnameCommand, GrepCommand, HeadCommand, TailCommand, WcCommand,
+    BasenameCommand, DirnameCommand, GrepCommand, HeadCommand, MoreCommand, TailCommand, WcCommand,
 };
 pub use help::HelpCommand;
 pub use history_cmd::HistoryCommand;
 pub use info::InfoCommand;
 pub use ipc::IpcCommand;
 pub use mem::{AllocCommand, MemCommand};
-pub use misc::{ClearCommand, ColorCommand, EchoCommand, PanicCommand};
+pub use misc::{ClearCommand, ColorCommand, EchoCommand, PanicCommand, ScrollLockCommand};
 pub use power::{HaltCommand, RebootCommand, ShutdownCommand};
 pub use script::ShCommand;
 pub use status::StatusCommand;
@@ -58,6 +58,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &ClearCommand,
     &ColorCommand,
     &EchoCommand,
+    &ScrollLockCommand,
     // Script Runner (Bash/POSIX)
     &ShCommand,
     // GNU Coreutils - Filesystem
@@ -78,6 +79,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     // GNU Coreutils - Text & Inspection
     &HeadCommand,
     &TailCommand,
+    &MoreCommand,
     &WcCommand,
     &GrepCommand,
     &BasenameCommand,

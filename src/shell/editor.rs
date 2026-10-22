@@ -140,6 +140,7 @@ pub fn read_line(prompt: &str, buf: &mut [u8], state: &mut ShellState) -> Option
     let mut len = 0;
     let mut cursor_pos = 0;
     let mut history_offset: Option<usize> = None;
+    let mut scroll_offset: usize = 0;
     let mut draft_buf = [0u8; 128];
     let mut draft_len = 0;
 
@@ -164,13 +165,19 @@ pub fn read_line(prompt: &str, buf: &mut [u8], state: &mut ShellState) -> Option
                     }
                 } else if code == 3 {
                     // Ctrl+C: Cancel current line, print ^C, reprint prompt
+                    if scroll_offset > 0 {
+                        scroll_offset = 0;
+                    }
+                    crate::console::set_scroll_lock(false);
                     set_color(Color::LightGray, Color::Black);
                     crate::println!("^C");
                     len = 0;
                     cursor_pos = 0;
                     history_offset = None;
+                    let mut pbuf = [0u8; 96];
+                    let cur_prompt = state.format_prompt(&mut pbuf);
                     set_color(state.prompt_color, Color::Black);
-                    crate::print!("{}", prompt);
+                    crate::print!("{}", cur_prompt);
                     set_color(Color::White, Color::Black);
                 } else if code == 4 {
                     // Ctrl+D: EOF on empty line, or forward delete if non-empty
@@ -211,9 +218,17 @@ pub fn read_line(prompt: &str, buf: &mut [u8], state: &mut ShellState) -> Option
                     }
                 } else if code == 9 || c == '\t' {
                     // Tab Auto-Completion (Zsh-style)
-                    handle_tab_completion(prompt, buf, &mut len, &mut cursor_pos, state);
+                    let mut pbuf = [0u8; 96];
+                    let cur_prompt = state.format_prompt(&mut pbuf);
+                    handle_tab_completion(cur_prompt, buf, &mut len, &mut cursor_pos, state);
                 } else if code == 10 || code == 13 || c == '\r' || c == '\n' {
                     // Enter / Return / Ctrl+M / Ctrl+J
+                    if scroll_offset > 0 {
+                        let mut pbuf = [0u8; 96];
+                        let cur_prompt = state.format_prompt(&mut pbuf);
+                        let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                        crate::console::draw_scroll_viewport(0, cur_prompt, text, cursor_pos, state.prompt_color);
+                    }
                     crate::println!();
                     if len > 0 {
                         if let Ok(cmd_str) = core::str::from_utf8(&buf[..len]) {
@@ -235,8 +250,10 @@ pub fn read_line(prompt: &str, buf: &mut [u8], state: &mut ShellState) -> Option
                 } else if code == 12 {
                     // Ctrl+L: Clear screen and reprint prompt + current line
                     crate::console::clear_screen();
+                    let mut pbuf = [0u8; 96];
+                    let cur_prompt = state.format_prompt(&mut pbuf);
                     set_color(state.prompt_color, Color::Black);
-                    crate::print!("{}", prompt);
+                    crate::print!("{}", cur_prompt);
                     set_color(Color::White, Color::Black);
                     let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
                     crate::print!("{}", text);
@@ -300,12 +317,39 @@ pub fn read_line(prompt: &str, buf: &mut [u8], state: &mut ShellState) -> Option
                             cursor_pos = new_pos;
                         }
                     }
+                } else if code == 19 {
+                    // Ctrl+S: Toggle Scroll Lock mode
+                    let active = crate::console::toggle_scroll_lock();
+                    if !active && scroll_offset > 0 {
+                        scroll_offset = 0;
+                    }
+                    let mut pbuf = [0u8; 96];
+                    let cur_prompt = state.format_prompt(&mut pbuf);
+                    let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                    crate::console::draw_scroll_viewport(scroll_offset, cur_prompt, text, cursor_pos, state.prompt_color);
                 } else if code == 26 {
                     // Ctrl+Z: Suspend notification
                     set_color(Color::Yellow, Color::Black);
                     crate::print!("^Z");
                     set_color(Color::White, Color::Black);
+                } else if code == 27 {
+                    // Escape: Exit scroll mode / reset scrollback viewport
+                    if scroll_offset > 0 || crate::console::is_scroll_lock_active() {
+                        scroll_offset = 0;
+                        crate::console::set_scroll_lock(false);
+                        let mut pbuf = [0u8; 96];
+                        let cur_prompt = state.format_prompt(&mut pbuf);
+                        let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                        crate::console::draw_scroll_viewport(0, cur_prompt, text, cursor_pos, state.prompt_color);
+                    }
                 } else if len < buf.len() && (c as u32) >= 32 && (c as u32) <= 126 {
+                    if scroll_offset > 0 {
+                        scroll_offset = 0;
+                        let mut pbuf = [0u8; 96];
+                        let cur_prompt = state.format_prompt(&mut pbuf);
+                        let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                        crate::console::draw_scroll_viewport(0, cur_prompt, text, cursor_pos, state.prompt_color);
+                    }
                     let b = c as u8;
                     let old_len = len;
 
@@ -326,26 +370,73 @@ pub fn read_line(prompt: &str, buf: &mut [u8], state: &mut ShellState) -> Option
                 }
             }
             Key::Special(ScanCode::UP) => {
-                navigate_history_up(
-                    buf,
-                    &mut len,
-                    &mut cursor_pos,
-                    &mut history_offset,
-                    &mut draft_buf,
-                    &mut draft_len,
-                    state,
-                );
+                if crate::console::is_scroll_lock_active() {
+                    let max = crate::console::max_scroll_offset();
+                    if max > 0 && scroll_offset < max {
+                        scroll_offset += 1;
+                        let mut pbuf = [0u8; 96];
+                        let cur_prompt = state.format_prompt(&mut pbuf);
+                        let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                        crate::console::draw_scroll_viewport(
+                            scroll_offset,
+                            cur_prompt,
+                            text,
+                            cursor_pos,
+                            state.prompt_color,
+                        );
+                    }
+                } else {
+                    if scroll_offset > 0 {
+                        scroll_offset = 0;
+                        let mut pbuf = [0u8; 96];
+                        let cur_prompt = state.format_prompt(&mut pbuf);
+                        let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                        crate::console::draw_scroll_viewport(0, cur_prompt, text, cursor_pos, state.prompt_color);
+                    }
+                    navigate_history_up(
+                        buf,
+                        &mut len,
+                        &mut cursor_pos,
+                        &mut history_offset,
+                        &mut draft_buf,
+                        &mut draft_len,
+                        state,
+                    );
+                }
             }
             Key::Special(ScanCode::DOWN) => {
-                navigate_history_down(
-                    buf,
-                    &mut len,
-                    &mut cursor_pos,
-                    &mut history_offset,
-                    &draft_buf,
-                    draft_len,
-                    state,
-                );
+                if crate::console::is_scroll_lock_active() {
+                    if scroll_offset > 0 {
+                        scroll_offset -= 1;
+                        let mut pbuf = [0u8; 96];
+                        let cur_prompt = state.format_prompt(&mut pbuf);
+                        let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                        crate::console::draw_scroll_viewport(
+                            scroll_offset,
+                            cur_prompt,
+                            text,
+                            cursor_pos,
+                            state.prompt_color,
+                        );
+                    }
+                } else {
+                    if scroll_offset > 0 {
+                        scroll_offset = 0;
+                        let mut pbuf = [0u8; 96];
+                        let cur_prompt = state.format_prompt(&mut pbuf);
+                        let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                        crate::console::draw_scroll_viewport(0, cur_prompt, text, cursor_pos, state.prompt_color);
+                    }
+                    navigate_history_down(
+                        buf,
+                        &mut len,
+                        &mut cursor_pos,
+                        &mut history_offset,
+                        &draft_buf,
+                        draft_len,
+                        state,
+                    );
+                }
             }
             Key::Special(ScanCode::LEFT) => {
                 if cursor_pos > 0 {
@@ -380,6 +471,62 @@ pub fn read_line(prompt: &str, buf: &mut [u8], state: &mut ShellState) -> Option
                     len -= 1;
                     let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
                     redraw_line(old_len, text, cursor_pos, cursor_pos);
+                }
+            }
+            Key::Special(ScanCode::PAGE_UP) => {
+                if !crate::console::is_scroll_lock_active() {
+                    crate::console::set_scroll_lock(true);
+                }
+                let max = crate::console::max_scroll_offset();
+                let (_cols, rows) = crate::console::screen_size();
+                let step = rows.saturating_sub(2).max(1);
+                scroll_offset = (scroll_offset + step).min(max);
+                let mut pbuf = [0u8; 96];
+                let cur_prompt = state.format_prompt(&mut pbuf);
+                let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                crate::console::draw_scroll_viewport(
+                    scroll_offset,
+                    cur_prompt,
+                    text,
+                    cursor_pos,
+                    state.prompt_color,
+                );
+            }
+            Key::Special(ScanCode::PAGE_DOWN) => {
+                if crate::console::is_scroll_lock_active() {
+                    let (_cols, rows) = crate::console::screen_size();
+                    let step = rows.saturating_sub(2).max(1);
+                    scroll_offset = scroll_offset.saturating_sub(step);
+                    let mut pbuf = [0u8; 96];
+                    let cur_prompt = state.format_prompt(&mut pbuf);
+                    let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                    crate::console::draw_scroll_viewport(
+                        scroll_offset,
+                        cur_prompt,
+                        text,
+                        cursor_pos,
+                        state.prompt_color,
+                    );
+                }
+            }
+            Key::Special(ScanCode::FUNCTION_12) => {
+                let active = crate::console::toggle_scroll_lock();
+                if !active && scroll_offset > 0 {
+                    scroll_offset = 0;
+                }
+                let mut pbuf = [0u8; 96];
+                let cur_prompt = state.format_prompt(&mut pbuf);
+                let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                crate::console::draw_scroll_viewport(scroll_offset, cur_prompt, text, cursor_pos, state.prompt_color);
+            }
+            Key::Special(ScanCode::ESCAPE) => {
+                if scroll_offset > 0 || crate::console::is_scroll_lock_active() {
+                    scroll_offset = 0;
+                    crate::console::set_scroll_lock(false);
+                    let mut pbuf = [0u8; 96];
+                    let cur_prompt = state.format_prompt(&mut pbuf);
+                    let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+                    crate::console::draw_scroll_viewport(0, cur_prompt, text, cursor_pos, state.prompt_color);
                 }
             }
             _ => {}

@@ -118,3 +118,49 @@ impl Command for PanicCommand {
         panic!("Manual kernel panic triggered by user from shell.");
     }
 }
+
+pub struct ScrollLockCommand;
+
+impl Command for ScrollLockCommand {
+    fn name(&self) -> &'static str {
+        "scroll"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["scrolllock", "slock"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Toggle or query Scroll Lock mode for Up/Down arrow terminal scrolling"
+    }
+
+    fn usage(&self) -> &'static str {
+        "scroll [on|off]"
+    }
+
+    fn execute(&self, args: &[&str], _state: &mut ShellState) {
+        let new_state = match args.first() {
+            Some(&"on") => {
+                crate::console::set_scroll_lock(true);
+                true
+            }
+            Some(&"off") => {
+                crate::console::set_scroll_lock(false);
+                false
+            }
+            _ => crate::console::toggle_scroll_lock(),
+        };
+
+        if new_state {
+            set_color(Color::LightCyan, Color::Black);
+            println!("[+] Scroll Lock: ON");
+            println!("    Use Up / Down arrow keys (or PageUp / PageDown) to scroll the terminal screen.");
+            println!("    Type 'scroll off' or toggle Scroll Lock (or Ctrl+S) to resume history navigation.");
+        } else {
+            set_color(Color::Yellow, Color::Black);
+            println!("[-] Scroll Lock: OFF");
+            println!("    Up / Down arrow keys now navigate command history as normal.");
+        }
+    }
+}
+

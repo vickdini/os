@@ -61,15 +61,19 @@ impl ShellState {
         self.cwd_len = len;
     }
 
-    /// Formats the interactive prompt (e.g. "hydra:/bin> ") into `out`.
+    /// Formats the interactive prompt (e.g. "hydra:/bin> " or "hydra:/bin [SCROLL]> ") into `out`.
     pub fn format_prompt<'a>(&self, out: &'a mut [u8]) -> &'a str {
         let prefix = b"hydra:";
-        let suffix = b"> ";
-        let total = prefix.len() + self.cwd_len + suffix.len();
+        let scroll_suffix: &[u8] = if crate::console::is_scroll_lock_active() {
+            b" [SCROLL]> "
+        } else {
+            b"> "
+        };
+        let total = prefix.len() + self.cwd_len + scroll_suffix.len();
         if total <= out.len() {
             out[..prefix.len()].copy_from_slice(prefix);
             out[prefix.len()..prefix.len() + self.cwd_len].copy_from_slice(&self.cwd[..self.cwd_len]);
-            out[prefix.len() + self.cwd_len..total].copy_from_slice(suffix);
+            out[prefix.len() + self.cwd_len..total].copy_from_slice(scroll_suffix);
             core::str::from_utf8(&out[..total]).unwrap_or("hydra> ")
         } else {
             "hydra> "

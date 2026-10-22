@@ -504,3 +504,53 @@ impl Command for DirnameCommand {
         println!("{}", result);
     }
 }
+
+/// Paginate file output with full interactive scrolling.
+pub struct MoreCommand;
+
+impl Command for MoreCommand {
+    fn name(&self) -> &'static str {
+        "more"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["less", "page"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Paginate file contents with interactive scrolling (Up/Down, PgUp/PgDn, q: quit)"
+    }
+
+    fn usage(&self) -> &'static str {
+        "more <file>"
+    }
+
+    fn execute(&self, args: &[&str], state: &mut ShellState) {
+        if args.is_empty() {
+            set_color(Color::LightRed, Color::Black);
+            println!("Usage: {}", self.usage());
+            return;
+        }
+
+        let file = args[0];
+        let mut norm_buf = [0u8; 128];
+        let path = normalize_path(state.cwd_str(), file, &mut norm_buf);
+
+        let mut buf = [0u8; 8192];
+        match ZfsClient::read_file_by_path(path, &mut buf) {
+            Ok(bytes_read) => {
+                if let Ok(text) = core::str::from_utf8(&buf[..bytes_read]) {
+                    crate::shell::pager::paginate_text(file, text);
+                } else {
+                    set_color(Color::Yellow, Color::Black);
+                    println!("{}: binary file ({} bytes)", file, bytes_read);
+                }
+            }
+            Err(e) => {
+                set_color(Color::LightRed, Color::Black);
+                println!("more: cannot open '{}': {}", file, e);
+            }
+        }
+    }
+}
+

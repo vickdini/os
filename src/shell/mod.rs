@@ -3,6 +3,7 @@ pub mod commands;
 pub mod editor;
 pub mod fs;
 pub mod history;
+pub mod pager;
 pub mod state;
 
 use core::str;
