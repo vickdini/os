@@ -57,7 +57,9 @@ pub fn run() -> ! {
 
     loop {
         set_color(state.prompt_color, Color::Black);
-        let len = read_line("hydra> ", &mut line_buf);
+        let mut prompt_buf = [0u8; 96];
+        let prompt_str = state.format_prompt(&mut prompt_buf);
+        let len = read_line(prompt_str, &mut line_buf);
         set_color(Color::White, Color::Black);
 
         if len == 0 {

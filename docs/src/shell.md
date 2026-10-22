@@ -13,13 +13,17 @@ The shell is architected as a modular, extensible command registry where every c
 
 ```
 src/shell/
-├── mod.rs                  # REPL loop, banner, and command dispatcher
-├── state.rs                # ShellState (CSpace, IPC endpoint, prompt color)
+├── mod.rs                  # REPL loop, banner, prompt formatting, and command dispatcher
+├── state.rs                # ShellState (CSpace, IPC endpoint, prompt color, cwd)
 ├── command.rs              # The `Command` trait and argument parsing helpers
 └── commands/               # Modular Command Implementations
     ├── mod.rs              # Static command registry (`COMMANDS`)
+    ├── gnu_fs.rs           # GNU Filesystem utils (`pwd`, `cd`, `mkdir`, `rmdir`, `rm`, `cp`, `mv`, `touch`, `stat`, `df`, `du`)
+    ├── gnu_text.rs         # GNU Text inspection (`head`, `tail`, `wc`, `grep`, `basename`, `dirname`)
+    ├── gnu_sys.rs          # GNU System & scripting (`uname`, `whoami`, `sleep`, `seq`, `yes`, `true`, `false`)
+    ├── fs_cmds.rs          # File operations (`ls`, `cat`, `write`)
     ├── help.rs             # Help command & usage manual generator
-    ├── info.rs             # OS version & vision (`info`, `uname`)
+    ├── info.rs             # OS version & architecture overview (`info`, `version`)
     ├── status.rs           # Subsystem health inspection
     ├── cpu.rs              # CPU control registers (`cpu`)
     ├── mem.rs              # Memory statistics & allocation (`mem`, `alloc`)
@@ -28,17 +32,72 @@ src/shell/
     ├── ipc.rs              # Microkernel message rendezvous (`ipc`)
     ├── time.rs             # Real-Time Clock (`time`, `date`)
     ├── power.rs            # ACPI/UEFI power management (`shutdown`, `reboot`, `halt`)
+    ├── zfs_cmds.rs         # OpenZFS administration (`zpool`, `zfs`)
+    ├── efifs.rs            # Low-level UEFI FAT boot volume diagnostics (`efifs`)
     └── misc.rs             # Utilities (`color`, `echo`, `clear`, `panic`)
+```
+
+### Dynamic Working Directory Prompt
+The shell tracks the current working directory dynamically in `ShellState` (initialized to `/bin`), displaying a standard Unix prompt:
+```text
+hydra:/bin> pwd
+/bin
+hydra:/bin> cd /
+hydra:/> ls
+NAME                     TYPE         CHECKSUM     STATUS
+------------------------------------------------------------
+bin                      <DIR>        Fletcher4     ONLINE
+root                     <DIR>        Fletcher4     ONLINE
+tmp                      <DIR>        Fletcher4     ONLINE
+------------------------------------------------------------
+hydra:/> cd /bin
+hydra:/bin>
 ```
 
 ---
 
 ## 2. Command Reference
 
+### GNU Core Utilities (POSIX / Linux Compatible)
+
+| Command | Syntax | Description | Supported Options & Flags |
+| :--- | :--- | :--- | :--- |
+| `pwd` | `pwd` | Prints current working directory. | |
+| `cd`, `chdir` | `cd [dir]` | Changes current working directory. Default: `/root`. | Relative paths, `..`, `.`, `/` |
+| `ls`, `dir` | `ls [path]` | Lists files and directories in ZFS. Default: `cwd`. | `-l` (long format), `-a` (show all) |
+| `cat`, `type` | `cat <file>` | Displays file contents verified with Fletcher-4. | Path resolution relative to `cwd` |
+| `write` | `write <file> [text]` | Writes/appends data to a file via CoW transaction. | Path resolution relative to `cwd` |
+| `touch` | `touch <file...>` | Creates empty file or updates birth TXG / timestamp. | Path resolution relative to `cwd` |
+| `mkdir` | `mkdir <dir...>` | Creates one or more directories in ZFS. | `-p` (create parents without error) |
+| `rmdir` | `rmdir <dir...>` | Removes empty directories from ZFS. | Verifies directory empty count |
+| `rm`, `unlink` | `rm <file...>` | Removes files or directories from ZFS. | `-r`/`-R` (recursive), `-f` (force) |
+| `cp`, `copy` | `cp <src> <dst>` | Copies files within ZFS pool via CoW. | Directory destination resolution |
+| `mv`, `rename` | `mv <src> <dst>` | Moves or renames files or directories in ZFS. | Cross-directory and in-place moves |
+| `stat` | `stat <file>` | Displays detailed file or directory metadata. | Size, blocks, birth TXG, checksum |
+| `df` | `df` | Reports filesystem and storage pool capacity. | `-h` (human-readable: MiB/KiB) |
+| `du` | `du [path]` | Estimates file and directory disk space usage. | `-h` (human-readable), `-s` (summary), `-a` |
+| `head` | `head <file...>` | Displays first N lines of files. Default: 10 lines. | `-n <num>` or `-<num>` |
+| `tail` | `tail <file...>` | Displays last N lines of files. Default: 10 lines. | `-n <num>` or `-<num>` |
+| `wc` | `wc <file...>` | Counts newlines, words, and bytes in files. | `-l` (lines), `-w` (words), `-c` (bytes) |
+| `grep` | `grep <pattern> <file>` | Searches for patterns in files. | `-i` (ignore case), `-n` (line numbers), `-v` (invert), `-c` (count) |
+| `basename` | `basename <path> [suf]` | Strips directory and suffix from filenames. | Optional suffix removal |
+| `dirname` | `dirname <path>` | Strips last component from filename path. | |
+| `uname` | `uname` | Prints operating system and architecture info. | `-a` (all), `-s` (kernel), `-n` (node), `-r` (release), `-v` (version), `-m` (arch) |
+| `whoami`, `id` | `whoami` | Prints current user identity and capabilities. | `-u`, `-g`, `-a` (full capability context) |
+| `sleep` | `sleep <secs>` | Delays execution for specified duration (up to 60s). | Non-blocking firmware stall |
+| `seq` | `seq [FIRST [INC]] LAST`| Prints sequences of integers. | Customizable start, step, and end |
+| `yes` | `yes [string]` | Outputs string repeatedly (25 safe lines in console). | Default string: `y` |
+| `true` | `true` | Returns success status (exit status 0). | |
+| `false` | `false` | Returns failure status (exit status 1). | |
+
+---
+
+### Microkernel & Hardware Diagnostics
+
 | Command | Syntax | Description |
 | :--- | :--- | :--- |
 | `help`, `?` | `help [cmd]` | Displays the interactive command manual and specific usage. |
-| `info`, `uname` | `info` | Prints Hydra Microkernel OS version, build target, and architecture overview. |
+| `info`, `version` | `info` | Prints Hydra Microkernel OS version, build target, and architecture overview. |
 | `status` | `status` | Reports operational health across GDT, CPU, Frame Allocator, Paging, CSpace, and IPC. |
 | `cpu` | `cpu` | Displays CPU control registers (`CR0`, `CR2`, `CR3` PML4 root, `CR4`). |
 | `mem`, `memory` | `mem` | Displays physical memory manager statistics (Total Usable RAM, Allocated, Free). |
@@ -50,10 +109,7 @@ src/shell/
 | `ipc` | `ipc <label> [a0] [a1]` | Sends and receives a fast register IPC message through rendezvous Endpoint #1. |
 | `time`, `date` | `time` | Queries the hardware Real-Time Clock (RTC) via UEFI runtime services. |
 | `zpool` | `zpool <status\|list>` | Inspects and manages ZFS storage pools (`hydrapool`, vdevs, CoW Merkle tree). |
-| `zfs` | `zfs <list\|snap\|cat\|write>` | Manages ZFS datasets (`hydrapool/root`, `hydrapool/bin`) and CoW snapshots. |
-| `ls`, `dir` | `ls [path]` | Lists files and directories from the ZFS File Server (e.g. `ls`, `ls /bin`). |
-| `cat`, `type` | `cat <path>` | Displays file contents from ZFS with Fletcher-4 integrity verification. |
-| `write`, `touch` | `write <name> [text]` | Creates or updates a file in ZFS via Copy-on-Write transaction. |
+| `zfs` | `zfs <list\|snap\|cat\|write>` | Manages ZFS datasets (`hydrapool/root`, `hydrapool/bin`, `hydrapool/tmp`) and CoW snapshots. |
 | `efifs` | `efifs <ls\|cat\|run>` | Low-level firmware diagnostic tool inspecting raw UEFI FAT bootloader media. |
 | `color` | `color <name>` | Customizes shell prompt and text color (`cyan`, `green`, `yellow`, `red`, `white`, `magenta`, `blue`). |
 | `echo` | `echo <text...>` | Echoes input arguments back to the screen. |

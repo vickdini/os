@@ -51,7 +51,16 @@ impl ZfsServer {
         let _ = dmu.create_dataset("hydrapool/bin", "/bin");
         let _ = dmu.add_directory_entry(root_dir, "bin", bin_dir, DnodeType::Directory);
 
-        // 3. Pre-populate default files and sample executables in ZFS /bin
+        // 3. Create /root and /tmp directories
+        let root_home = dmu.allocate_object(DnodeType::Directory, "root").unwrap();
+        let _ = dmu.create_dataset("hydrapool/home", "/root");
+        let _ = dmu.add_directory_entry(root_dir, "root", root_home, DnodeType::Directory);
+
+        let tmp_dir = dmu.allocate_object(DnodeType::Directory, "tmp").unwrap();
+        let _ = dmu.create_dataset("hydrapool/tmp", "/tmp");
+        let _ = dmu.add_directory_entry(root_dir, "tmp", tmp_dir, DnodeType::Directory);
+
+        // 4. Pre-populate default files and sample executables in ZFS /bin
         let sample_files: &[(&str, &[u8])] = &[
             (
                 "readme.txt",

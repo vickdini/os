@@ -1,0 +1,286 @@
+use core::time::Duration;
+use uefi::proto::console::text::Color;
+
+use crate::console::set_color;
+use crate::shell::command::{parse_u64, Command};
+use crate::shell::state::ShellState;
+
+/// Print system information.
+pub struct UnameCommand;
+
+impl Command for UnameCommand {
+    fn name(&self) -> &'static str {
+        "uname"
+    }
+
+    fn description(&self) -> &'static str {
+        "Print system information (options: -a all, -s kernel, -n node, -r release, -v version, -m arch)"
+    }
+
+    fn usage(&self) -> &'static str {
+        "uname [-a] [-s] [-n] [-r] [-v] [-m]"
+    }
+
+    fn execute(&self, args: &[&str], _state: &mut ShellState) {
+        let mut opt_s = false;
+        let mut opt_n = false;
+        let mut opt_r = false;
+        let mut opt_v = false;
+        let mut opt_m = false;
+
+        for &arg in args {
+            if arg.starts_with('-') && arg.len() > 1 {
+                for c in arg.chars().skip(1) {
+                    match c {
+                        'a' => {
+                            opt_s = true;
+                            opt_n = true;
+                            opt_r = true;
+                            opt_v = true;
+                            opt_m = true;
+                        }
+                        's' => opt_s = true,
+                        'n' => opt_n = true,
+                        'r' => opt_r = true,
+                        'v' => opt_v = true,
+                        'm' => opt_m = true,
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Default to -s if no options given
+        if !opt_s && !opt_n && !opt_r && !opt_v && !opt_m {
+            opt_s = true;
+        }
+
+        let mut first = true;
+        set_color(Color::White, Color::Black);
+
+        if opt_s {
+            if !first { print!(" "); }
+            print!("Hydra");
+            first = false;
+        }
+        if opt_n {
+            if !first { print!(" "); }
+            print!("hydra-node-0");
+            first = false;
+        }
+        if opt_r {
+            if !first { print!(" "); }
+            print!("0.1.0");
+            first = false;
+        }
+        if opt_v {
+            if !first { print!(" "); }
+            print!("#1 SMP UEFI 64-bit Long Mode");
+            first = false;
+        }
+        if opt_m {
+            if !first { print!(" "); }
+            print!("x86_64");
+        }
+        println!();
+    }
+}
+
+/// Print current user and capability context.
+pub struct WhoamiCommand;
+
+impl Command for WhoamiCommand {
+    fn name(&self) -> &'static str {
+        "whoami"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["id"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Print current effective user and capability security identity"
+    }
+
+    fn usage(&self) -> &'static str {
+        "whoami [-u] [-g]"
+    }
+
+    fn execute(&self, args: &[&str], state: &mut ShellState) {
+        let is_id = args.contains(&"-u") || args.contains(&"-g") || args.contains(&"-a");
+
+        set_color(Color::White, Color::Black);
+        if is_id || args.is_empty() && self.name() == "id" {
+            println!("uid=0(root) gid=0(root) groups=0(root) cspace={} slots rights=ALL(0xFFFFFFFF)",
+                state.cap_table.len());
+        } else {
+            println!("root");
+        }
+    }
+}
+
+/// Delay execution for a specified duration in seconds.
+pub struct SleepCommand;
+
+impl Command for SleepCommand {
+    fn name(&self) -> &'static str {
+        "sleep"
+    }
+
+    fn description(&self) -> &'static str {
+        "Delay execution for a specified number of seconds"
+    }
+
+    fn usage(&self) -> &'static str {
+        "sleep <seconds>"
+    }
+
+    fn execute(&self, args: &[&str], _state: &mut ShellState) {
+        if args.is_empty() {
+            set_color(Color::LightRed, Color::Black);
+            println!("Usage: {}", self.usage());
+            return;
+        }
+
+        let secs = match parse_u64(args[0]) {
+            Some(s) if s <= 60 => s,
+            Some(_) => {
+                set_color(Color::LightRed, Color::Black);
+                println!("sleep: interval exceeds 60 seconds limit");
+                return;
+            }
+            None => {
+                set_color(Color::LightRed, Color::Black);
+                println!("sleep: invalid time interval '{}'", args[0]);
+                return;
+            }
+        };
+
+        // Sleep in 100ms increments to yield cleanly to firmware
+        for _ in 0..(secs * 10) {
+            uefi::boot::stall(Duration::from_millis(100));
+        }
+    }
+}
+
+/// Print a sequence of numbers.
+pub struct SeqCommand;
+
+impl Command for SeqCommand {
+    fn name(&self) -> &'static str {
+        "seq"
+    }
+
+    fn description(&self) -> &'static str {
+        "Print a sequence of numbers (e.g. 'seq 5', 'seq 2 5', 'seq 1 2 9')"
+    }
+
+    fn usage(&self) -> &'static str {
+        "seq [FIRST [INCREMENT]] LAST"
+    }
+
+    fn execute(&self, args: &[&str], _state: &mut ShellState) {
+        if args.is_empty() {
+            set_color(Color::LightRed, Color::Black);
+            println!("Usage: {}", self.usage());
+            return;
+        }
+
+        let (first, step, last) = match args.len() {
+            1 => {
+                let last = parse_u64(args[0]).unwrap_or(0);
+                (1u64, 1u64, last)
+            }
+            2 => {
+                let first = parse_u64(args[0]).unwrap_or(1);
+                let last = parse_u64(args[1]).unwrap_or(first);
+                (first, 1u64, last)
+            }
+            _ => {
+                let first = parse_u64(args[0]).unwrap_or(1);
+                let step = parse_u64(args[1]).unwrap_or(1);
+                let last = parse_u64(args[2]).unwrap_or(first);
+                (first, if step == 0 { 1 } else { step }, last)
+            }
+        };
+
+        set_color(Color::White, Color::Black);
+        let mut curr = first;
+        while curr <= last {
+            println!("{}", curr);
+            curr = curr.saturating_add(step);
+            if curr == 0 { break; } // Overflow guard
+        }
+    }
+}
+
+/// Output a string repeatedly.
+pub struct YesCommand;
+
+impl Command for YesCommand {
+    fn name(&self) -> &'static str {
+        "yes"
+    }
+
+    fn description(&self) -> &'static str {
+        "Output a string repeatedly (safely outputs 25 lines in console)"
+    }
+
+    fn usage(&self) -> &'static str {
+        "yes [string]"
+    }
+
+    fn execute(&self, args: &[&str], _state: &mut ShellState) {
+        let msg = if args.is_empty() { "y" } else { args[0] };
+        set_color(Color::White, Color::Black);
+
+        // Print 25 iterations to avoid freezing console without signal interrupt
+        for _ in 0..25 {
+            println!("{}", msg);
+        }
+        set_color(Color::DarkGray, Color::Black);
+        println!("(yes: limited to 25 repetitions for interactive console safety)");
+    }
+}
+
+/// Returns true (exit status 0).
+pub struct TrueCommand;
+
+impl Command for TrueCommand {
+    fn name(&self) -> &'static str {
+        "true"
+    }
+
+    fn description(&self) -> &'static str {
+        "Do nothing, successfully"
+    }
+
+    fn usage(&self) -> &'static str {
+        "true"
+    }
+
+    fn execute(&self, _args: &[&str], _state: &mut ShellState) {
+        // Successful no-op
+    }
+}
+
+/// Returns false (exit status 1).
+pub struct FalseCommand;
+
+impl Command for FalseCommand {
+    fn name(&self) -> &'static str {
+        "false"
+    }
+
+    fn description(&self) -> &'static str {
+        "Do nothing, unsuccessfully"
+    }
+
+    fn usage(&self) -> &'static str {
+        "false"
+    }
+
+    fn execute(&self, _args: &[&str], _state: &mut ShellState) {
+        // Unsuccessful no-op
+    }
+}

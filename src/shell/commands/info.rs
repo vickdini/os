@@ -11,7 +11,7 @@ impl Command for InfoCommand {
     }
 
     fn aliases(&self) -> &'static [&'static str] {
-        &["uname", "version"]
+        &["version", "about"]
     }
 
     fn description(&self) -> &'static str {

@@ -1904,13 +1904,17 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 <p>Operating system development often starts with non-interactive boot routines that print diagnostic logs and halt. To enable active exploration, debugging, and experimentation with kernel primitives on live hardware or virtual machines, Hydra provides an <strong>Interactive Microkernel Shell</strong>.</p>
 <p>The shell is architected as a modular, extensible command registry where every command or tool lives in its own dedicated source file:</p>
 <div class="codehilite"><pre><span></span><code><span class="n">src</span><span class="o">/</span><span class="n">shell</span><span class="o">/</span>
-<span class="n">├──</span><span class="w"> </span><span class="k">mod</span><span class="p">.</span><span class="n">rs</span><span class="w">                  </span><span class="c1"># REPL loop, banner, and command dispatcher</span>
-<span class="n">├──</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">rs</span><span class="w">                </span><span class="c1"># ShellState (CSpace, IPC endpoint, prompt color)</span>
+<span class="n">├──</span><span class="w"> </span><span class="k">mod</span><span class="p">.</span><span class="n">rs</span><span class="w">                  </span><span class="c1"># REPL loop, banner, prompt formatting, and command dispatcher</span>
+<span class="n">├──</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">rs</span><span class="w">                </span><span class="c1"># ShellState (CSpace, IPC endpoint, prompt color, cwd)</span>
 <span class="n">├──</span><span class="w"> </span><span class="n">command</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># The `Command` trait and argument parsing helpers</span>
 <span class="n">└──</span><span class="w"> </span><span class="n">commands</span><span class="o">/</span><span class="w">               </span><span class="c1"># Modular Command Implementations</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">mod</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># Static command registry (`COMMANDS`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">gnu_fs</span><span class="p">.</span><span class="n">rs</span><span class="w">           </span><span class="c1"># GNU Filesystem utils (`pwd`, `cd`, `mkdir`, `rmdir`, `rm`, `cp`, `mv`, `touch`, `stat`, `df`, `du`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">gnu_text</span><span class="p">.</span><span class="n">rs</span><span class="w">         </span><span class="c1"># GNU Text inspection (`head`, `tail`, `wc`, `grep`, `basename`, `dirname`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">gnu_sys</span><span class="p">.</span><span class="n">rs</span><span class="w">          </span><span class="c1"># GNU System &amp; scripting (`uname`, `whoami`, `sleep`, `seq`, `yes`, `true`, `false`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">fs_cmds</span><span class="p">.</span><span class="n">rs</span><span class="w">          </span><span class="c1"># File operations (`ls`, `cat`, `write`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">help</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># Help command &amp; usage manual generator</span>
-<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">info</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># OS version &amp; vision (`info`, `uname`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">info</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># OS version &amp; architecture overview (`info`, `version`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">status</span><span class="p">.</span><span class="n">rs</span><span class="w">           </span><span class="c1"># Subsystem health inspection</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">cpu</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># CPU control registers (`cpu`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">mem</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># Memory statistics &amp; allocation (`mem`, `alloc`)</span>
@@ -1919,11 +1923,206 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">ipc</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># Microkernel message rendezvous (`ipc`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="kt">time</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># Real-Time Clock (`time`, `date`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">power</span><span class="p">.</span><span class="n">rs</span><span class="w">            </span><span class="c1"># ACPI/UEFI power management (`shutdown`, `reboot`, `halt`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">zfs_cmds</span><span class="p">.</span><span class="n">rs</span><span class="w">         </span><span class="c1"># OpenZFS administration (`zpool`, `zfs`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">efifs</span><span class="p">.</span><span class="n">rs</span><span class="w">            </span><span class="c1"># Low-level UEFI FAT boot volume diagnostics (`efifs`)</span>
 <span class="w">    </span><span class="n">└──</span><span class="w"> </span><span class="n">misc</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># Utilities (`color`, `echo`, `clear`, `panic`)</span>
+</code></pre></div>
+
+<h3>Dynamic Working Directory Prompt</h3>
+<p>The shell tracks the current working directory dynamically in <code>ShellState</code> (initialized to <code>/bin</code>), displaying a standard Unix prompt:</p>
+<div class="codehilite"><pre><span></span><code>hydra:/bin&gt; pwd
+/bin
+hydra:/bin&gt; cd /
+hydra:/&gt; ls
+NAME                     TYPE         CHECKSUM     STATUS
+------------------------------------------------------------
+bin                      &lt;DIR&gt;        Fletcher4     ONLINE
+root                     &lt;DIR&gt;        Fletcher4     ONLINE
+tmp                      &lt;DIR&gt;        Fletcher4     ONLINE
+------------------------------------------------------------
+hydra:/&gt; cd /bin
+hydra:/bin&gt;
 </code></pre></div>
 
 <hr />
 <h2>2. Command Reference</h2>
+<h3>GNU Core Utilities (POSIX / Linux Compatible)</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Command</th>
+<th style="text-align: left;">Syntax</th>
+<th style="text-align: left;">Description</th>
+<th style="text-align: left;">Supported Options &amp; Flags</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>pwd</code></td>
+<td style="text-align: left;"><code>pwd</code></td>
+<td style="text-align: left;">Prints current working directory.</td>
+<td style="text-align: left;"></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cd</code>, <code>chdir</code></td>
+<td style="text-align: left;"><code>cd [dir]</code></td>
+<td style="text-align: left;">Changes current working directory. Default: <code>/root</code>.</td>
+<td style="text-align: left;">Relative paths, <code>..</code>, <code>.</code>, <code>/</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ls</code>, <code>dir</code></td>
+<td style="text-align: left;"><code>ls [path]</code></td>
+<td style="text-align: left;">Lists files and directories in ZFS. Default: <code>cwd</code>.</td>
+<td style="text-align: left;"><code>-l</code> (long format), <code>-a</code> (show all)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cat</code>, <code>type</code></td>
+<td style="text-align: left;"><code>cat &lt;file&gt;</code></td>
+<td style="text-align: left;">Displays file contents verified with Fletcher-4.</td>
+<td style="text-align: left;">Path resolution relative to <code>cwd</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>write</code></td>
+<td style="text-align: left;"><code>write &lt;file&gt; [text]</code></td>
+<td style="text-align: left;">Writes/appends data to a file via CoW transaction.</td>
+<td style="text-align: left;">Path resolution relative to <code>cwd</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>touch</code></td>
+<td style="text-align: left;"><code>touch &lt;file...&gt;</code></td>
+<td style="text-align: left;">Creates empty file or updates birth TXG / timestamp.</td>
+<td style="text-align: left;">Path resolution relative to <code>cwd</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mkdir</code></td>
+<td style="text-align: left;"><code>mkdir &lt;dir...&gt;</code></td>
+<td style="text-align: left;">Creates one or more directories in ZFS.</td>
+<td style="text-align: left;"><code>-p</code> (create parents without error)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rmdir</code></td>
+<td style="text-align: left;"><code>rmdir &lt;dir...&gt;</code></td>
+<td style="text-align: left;">Removes empty directories from ZFS.</td>
+<td style="text-align: left;">Verifies directory empty count</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rm</code>, <code>unlink</code></td>
+<td style="text-align: left;"><code>rm &lt;file...&gt;</code></td>
+<td style="text-align: left;">Removes files or directories from ZFS.</td>
+<td style="text-align: left;"><code>-r</code>/<code>-R</code> (recursive), <code>-f</code> (force)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cp</code>, <code>copy</code></td>
+<td style="text-align: left;"><code>cp &lt;src&gt; &lt;dst&gt;</code></td>
+<td style="text-align: left;">Copies files within ZFS pool via CoW.</td>
+<td style="text-align: left;">Directory destination resolution</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mv</code>, <code>rename</code></td>
+<td style="text-align: left;"><code>mv &lt;src&gt; &lt;dst&gt;</code></td>
+<td style="text-align: left;">Moves or renames files or directories in ZFS.</td>
+<td style="text-align: left;">Cross-directory and in-place moves</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>stat</code></td>
+<td style="text-align: left;"><code>stat &lt;file&gt;</code></td>
+<td style="text-align: left;">Displays detailed file or directory metadata.</td>
+<td style="text-align: left;">Size, blocks, birth TXG, checksum</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>df</code></td>
+<td style="text-align: left;"><code>df</code></td>
+<td style="text-align: left;">Reports filesystem and storage pool capacity.</td>
+<td style="text-align: left;"><code>-h</code> (human-readable: MiB/KiB)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>du</code></td>
+<td style="text-align: left;"><code>du [path]</code></td>
+<td style="text-align: left;">Estimates file and directory disk space usage.</td>
+<td style="text-align: left;"><code>-h</code> (human-readable), <code>-s</code> (summary), <code>-a</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>head</code></td>
+<td style="text-align: left;"><code>head &lt;file...&gt;</code></td>
+<td style="text-align: left;">Displays first N lines of files. Default: 10 lines.</td>
+<td style="text-align: left;"><code>-n &lt;num&gt;</code> or <code>-&lt;num&gt;</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tail</code></td>
+<td style="text-align: left;"><code>tail &lt;file...&gt;</code></td>
+<td style="text-align: left;">Displays last N lines of files. Default: 10 lines.</td>
+<td style="text-align: left;"><code>-n &lt;num&gt;</code> or <code>-&lt;num&gt;</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>wc</code></td>
+<td style="text-align: left;"><code>wc &lt;file...&gt;</code></td>
+<td style="text-align: left;">Counts newlines, words, and bytes in files.</td>
+<td style="text-align: left;"><code>-l</code> (lines), <code>-w</code> (words), <code>-c</code> (bytes)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>grep</code></td>
+<td style="text-align: left;"><code>grep &lt;pattern&gt; &lt;file&gt;</code></td>
+<td style="text-align: left;">Searches for patterns in files.</td>
+<td style="text-align: left;"><code>-i</code> (ignore case), <code>-n</code> (line numbers), <code>-v</code> (invert), <code>-c</code> (count)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>basename</code></td>
+<td style="text-align: left;"><code>basename &lt;path&gt; [suf]</code></td>
+<td style="text-align: left;">Strips directory and suffix from filenames.</td>
+<td style="text-align: left;">Optional suffix removal</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>dirname</code></td>
+<td style="text-align: left;"><code>dirname &lt;path&gt;</code></td>
+<td style="text-align: left;">Strips last component from filename path.</td>
+<td style="text-align: left;"></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>uname</code></td>
+<td style="text-align: left;"><code>uname</code></td>
+<td style="text-align: left;">Prints operating system and architecture info.</td>
+<td style="text-align: left;"><code>-a</code> (all), <code>-s</code> (kernel), <code>-n</code> (node), <code>-r</code> (release), <code>-v</code> (version), <code>-m</code> (arch)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>whoami</code>, <code>id</code></td>
+<td style="text-align: left;"><code>whoami</code></td>
+<td style="text-align: left;">Prints current user identity and capabilities.</td>
+<td style="text-align: left;"><code>-u</code>, <code>-g</code>, <code>-a</code> (full capability context)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sleep</code></td>
+<td style="text-align: left;"><code>sleep &lt;secs&gt;</code></td>
+<td style="text-align: left;">Delays execution for specified duration (up to 60s).</td>
+<td style="text-align: left;">Non-blocking firmware stall</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>seq</code></td>
+<td style="text-align: left;"><code>seq [FIRST [INC]] LAST</code></td>
+<td style="text-align: left;">Prints sequences of integers.</td>
+<td style="text-align: left;">Customizable start, step, and end</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>yes</code></td>
+<td style="text-align: left;"><code>yes [string]</code></td>
+<td style="text-align: left;">Outputs string repeatedly (25 safe lines in console).</td>
+<td style="text-align: left;">Default string: <code>y</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>true</code></td>
+<td style="text-align: left;"><code>true</code></td>
+<td style="text-align: left;">Returns success status (exit status 0).</td>
+<td style="text-align: left;"></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Returns failure status (exit status 1).</td>
+<td style="text-align: left;"></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3>Microkernel &amp; Hardware Diagnostics</h3>
 <table>
 <thead>
 <tr>
@@ -1939,7 +2138,7 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 <td style="text-align: left;">Displays the interactive command manual and specific usage.</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>info</code>, <code>uname</code></td>
+<td style="text-align: left;"><code>info</code>, <code>version</code></td>
 <td style="text-align: left;"><code>info</code></td>
 <td style="text-align: left;">Prints Hydra Microkernel OS version, build target, and architecture overview.</td>
 </tr>
@@ -2001,22 +2200,7 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 <tr>
 <td style="text-align: left;"><code>zfs</code></td>
 <td style="text-align: left;"><code>zfs &lt;list\|snap\|cat\|write&gt;</code></td>
-<td style="text-align: left;">Manages ZFS datasets (<code>hydrapool/root</code>, <code>hydrapool/bin</code>) and CoW snapshots.</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>ls</code>, <code>dir</code></td>
-<td style="text-align: left;"><code>ls [path]</code></td>
-<td style="text-align: left;">Lists files and directories from the ZFS File Server (e.g. <code>ls</code>, <code>ls /bin</code>).</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>cat</code>, <code>type</code></td>
-<td style="text-align: left;"><code>cat &lt;path&gt;</code></td>
-<td style="text-align: left;">Displays file contents from ZFS with Fletcher-4 integrity verification.</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>write</code>, <code>touch</code></td>
-<td style="text-align: left;"><code>write &lt;name&gt; [text]</code></td>
-<td style="text-align: left;">Creates or updates a file in ZFS via Copy-on-Write transaction.</td>
+<td style="text-align: left;">Manages ZFS datasets (<code>hydrapool/root</code>, <code>hydrapool/bin</code>, <code>hydrapool/tmp</code>) and CoW snapshots.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>efifs</code></td>

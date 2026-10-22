@@ -59,11 +59,13 @@ impl Command for HelpCommand {
             println!("- {}", cmd.description());
         }
         set_color(Color::LightCyan, Color::Black);
-        println!("\nDefault Filesystem (ZFS Microkernel File Server):");
+        println!("\nGNU Core Utilities Suite & OpenZFS Subsystems:");
         set_color(Color::White, Color::Black);
-        println!("  - Use 'ls', 'cat', 'write' to manage files in the ZFS pool ('hydrapool').");
-        println!("  - Use 'zpool' and 'zfs' for pool and dataset/snapshot administration.");
-        println!("  - Use 'efifs' for low-level UEFI bootloader media diagnostics.");
-        println!("\nType 'help <command>' for specific syntax and options.\n");
+        println!("  - Filesystem:  pwd, cd, ls, cat, write, touch, mkdir, rmdir, rm, cp, mv, stat, df, du");
+        println!("  - Text stream: head, tail, wc, grep, basename, dirname");
+        println!("  - System/misc: uname, whoami/id, sleep, seq, yes, true, false");
+        println!("  - OpenZFS:     zpool, zfs (snapshots, datasets, Fletcher-4 checksums)");
+        println!("  - Firmware:    efifs, mem, cpu, translate, caps, ipc, time, color, clear, panic");
+        println!("\nType 'help <command>' for specific syntax, flags, and options.\n");
     }
 }

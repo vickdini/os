@@ -222,6 +222,44 @@ impl Dmu {
         self.zap_dirs[idx].insert(name, child_obj, obj_type)
     }
 
+    /// Removes an entry from a parent directory's ZAP structure and returns the child object ID.
+    pub fn remove_directory_entry(&mut self, parent_dir_obj: u64, name: &str) -> Result<u64, &'static str> {
+        let idx = parent_dir_obj as usize;
+        if idx >= MAX_OBJECTS {
+            return Err("Parent directory ID out of bounds");
+        }
+        let zap = &mut self.zap_dirs[idx];
+        let mut target_obj = None;
+        for entry in zap.entries.iter_mut() {
+            if entry.is_valid && entry.name_str() == name {
+                target_obj = Some(entry.object_id);
+                entry.is_valid = false;
+                zap.count = zap.count.saturating_sub(1);
+                break;
+            }
+        }
+        target_obj.ok_or("Entry not found in parent directory")
+    }
+
+    /// Frees an object dnode and releases its allocated storage blocks in SPA.
+    pub fn free_object(&mut self, obj_id: u64, spa: &mut Spa) {
+        let idx = obj_id as usize;
+        if idx > 0 && idx < MAX_OBJECTS {
+            let dnode = &mut self.dnodes[idx];
+            for bp in dnode.direct_blocks.iter_mut() {
+                if bp.is_allocated {
+                    let block_idx = (bp.offset as usize) / super::types::ZFS_BLOCK_SIZE;
+                    spa.free_block(block_idx);
+                    *bp = super::types::BlockPointer::empty();
+                }
+            }
+            dnode.obj_type = DnodeType::None;
+            dnode.file_size = 0;
+            dnode.name = [0u8; 32];
+            self.zap_dirs[idx] = super::zap::ZapDirectory::new();
+        }
+    }
+
     /// Creates a point-in-time CoW snapshot
     pub fn create_snapshot(&mut self, dataset_name: &str, snapshot_name: &str, current_txg: u64) -> Result<(), &'static str> {
         for snap in self.snapshots.iter_mut() {

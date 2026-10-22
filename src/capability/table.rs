@@ -50,4 +50,14 @@ impl CapabilityTable {
             false
         }
     }
+
+    pub fn len(&self) -> usize {
+        let mut count = 0;
+        for slot in self.slots.iter() {
+            if slot.is_some() {
+                count += 1;
+            }
+        }
+        count
+    }
 }

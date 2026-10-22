@@ -1,7 +1,7 @@
 use uefi::proto::console::text::Color;
 
 use crate::console::set_color;
-use crate::fs::client::ZfsClient;
+use crate::fs::client::{normalize_path, ZfsClient};
 use crate::fs::zfs::types::DnodeType;
 use crate::shell::command::Command;
 use crate::shell::state::ShellState;
@@ -18,22 +18,55 @@ impl Command for LsCommand {
     }
 
     fn description(&self) -> &'static str {
-        "List files and directories from the ZFS File Server (e.g. 'ls', 'ls /bin')"
+        "List files and directories from ZFS (options: -l long format, -a show all)"
     }
 
-    fn execute(&self, args: &[&str], _state: &mut ShellState) {
-        let path = if args.is_empty() { "/bin" } else { args[0] };
+    fn usage(&self) -> &'static str {
+        "ls [-l] [-a] [path]"
+    }
+
+    fn execute(&self, args: &[&str], state: &mut ShellState) {
+        let mut long_format = false;
+        let mut show_all = false;
+        let mut target_path = "";
+
+        for &arg in args {
+            if arg.starts_with('-') && arg.len() > 1 {
+                for c in arg.chars().skip(1) {
+                    match c {
+                        'l' => long_format = true,
+                        'a' => show_all = true,
+                        _ => {}
+                    }
+                }
+            } else if target_path.is_empty() {
+                target_path = arg;
+            }
+        }
+
+        let raw_path = if target_path.is_empty() { state.cwd_str() } else { target_path };
+        let mut norm_buf = [0u8; 128];
+        let path = normalize_path(state.cwd_str(), raw_path, &mut norm_buf);
 
         match ZfsClient::list_dir(path) {
             Ok((entries, count, ds_name)) => {
                 set_color(Color::Yellow, Color::Black);
                 println!("ZFS Directory listing for '{}' (Dataset: {}):", path, ds_name);
-                println!("{:<24} {:<10} {:>10} {:>10}", "NAME", "TYPE", "CHECKSUM", "STATUS");
+                if long_format {
+                    println!("{:<24} {:<10} {:>10} {:>10} {:>10}", "NAME", "TYPE", "SIZE", "CHECKSUM", "STATUS");
+                } else {
+                    println!("{:<24} {:<10} {:>10} {:>10}", "NAME", "TYPE", "CHECKSUM", "STATUS");
+                }
                 println!("------------------------------------------------------------");
 
                 let mut printed = 0;
                 for entry in entries.iter() {
                     if entry.is_valid {
+                        let name = entry.name_str();
+                        if !show_all && name.starts_with('.') && name != "." && name != ".." {
+                            continue;
+                        }
+
                         let is_dir = entry.obj_type == DnodeType::Directory;
                         let type_str = if is_dir { "<DIR>" } else { "<FILE>" };
 
@@ -43,7 +76,18 @@ impl Command for LsCommand {
                             set_color(Color::White, Color::Black);
                         }
 
-                        println!("{:<24} {:<10} {:>10} {:>10}", entry.name_str(), type_str, "Fletcher4", "ONLINE");
+                        if long_format {
+                            let mut item_path_buf = [0u8; 128];
+                            let item_norm = normalize_path(path, name, &mut item_path_buf);
+                            let size_str = if let Ok(stat) = ZfsClient::file_stat(item_norm) {
+                                stat.size
+                            } else {
+                                0
+                            };
+                            println!("{:<24} {:<10} {:>10} {:>10} {:>10}", name, type_str, size_str, "Fletcher4", "ONLINE");
+                        } else {
+                            println!("{:<24} {:<10} {:>10} {:>10}", name, type_str, "Fletcher4", "ONLINE");
+                        }
                         printed += 1;
                     }
                 }
@@ -80,6 +124,10 @@ impl Command for CatCommand {
         "Display file contents via the ZFS File Server (e.g. 'cat readme.txt')"
     }
 
+    fn usage(&self) -> &'static str {
+        "cat <filename>"
+    }
+
     fn execute(&self, args: &[&str], state: &mut ShellState) {
         if args.is_empty() {
             set_color(Color::LightRed, Color::Black);
@@ -88,29 +136,22 @@ impl Command for CatCommand {
         }
 
         let target = args[0];
+        let mut norm_buf = [0u8; 128];
+        let path = normalize_path(state.cwd_str(), target, &mut norm_buf);
 
-        match ZfsClient::lookup(target) {
-            Ok((obj_id, _)) => {
-                let mut buf = [0u8; 2048];
-                let cap = state.cap_table.get(1).cloned();
-                match ZfsClient::read_file(obj_id, &mut buf, cap) {
-                    Ok(n) => {
-                        set_color(Color::White, Color::Black);
-                        if let Ok(text) = core::str::from_utf8(&buf[..n]) {
-                            println!("{}", text);
-                        } else {
-                            println!("[Binary data: {} bytes, Fletcher-4 checksum verified]", n);
-                        }
-                    }
-                    Err(e) => {
-                        set_color(Color::LightRed, Color::Black);
-                        println!("[!] Read error: {}", e);
-                    }
+        let mut buf = [0u8; 4096];
+        match ZfsClient::read_file_by_path(path, &mut buf) {
+            Ok(n) => {
+                set_color(Color::White, Color::Black);
+                if let Ok(text) = core::str::from_utf8(&buf[..n]) {
+                    println!("{}", text);
+                } else {
+                    println!("[Binary data: {} bytes, Fletcher-4 checksum verified]", n);
                 }
             }
             Err(e) => {
                 set_color(Color::LightRed, Color::Black);
-                println!("[!] File '{}' not found in ZFS: {}", target, e);
+                println!("[!] Cannot read file '{}': {}", path, e);
             }
         }
     }
@@ -124,11 +165,15 @@ impl Command for WriteCommand {
     }
 
     fn aliases(&self) -> &'static [&'static str] {
-        &["touch"]
+        &["append"]
     }
 
     fn description(&self) -> &'static str {
         "Create or update a file in ZFS via Copy-on-Write (e.g. 'write note.txt Hello World')"
+    }
+
+    fn usage(&self) -> &'static str {
+        "write <filename> [content...]"
     }
 
     fn execute(&self, args: &[&str], state: &mut ShellState) {
@@ -139,7 +184,10 @@ impl Command for WriteCommand {
         }
 
         let name = args[0];
-        let mut content_buf = [0u8; 512];
+        let mut norm_buf = [0u8; 128];
+        let path = normalize_path(state.cwd_str(), name, &mut norm_buf);
+
+        let mut content_buf = [0u8; 1024];
         let mut content_len = 0;
 
         for (i, word) in args[1..].iter().enumerate() {
@@ -155,33 +203,18 @@ impl Command for WriteCommand {
             }
         }
         let content_bytes = &content_buf[..content_len];
-        let _cap = state.cap_table.get(1).cloned();
 
-        let mut server_lock = crate::fs::zfs::server::ZFS_SERVER.lock();
-        if let Some(server) = server_lock.as_mut() {
-            let file_obj = match server.dmu.allocate_object(DnodeType::PlainFile, name) {
-                Ok(id) => id,
-                Err(e) => {
-                    set_color(Color::LightRed, Color::Black);
-                    println!("[!] Allocation failed: {}", e);
-                    return;
-                }
-            };
-
-            match server.dmu.cow_write_file(file_obj, content_bytes, &mut server.spa) {
-                Ok(new_txg) => {
-                    let bin_dir = server.bin_dir_obj;
-                    let _ = server.dmu.add_directory_entry(bin_dir, name, file_obj, DnodeType::PlainFile);
-                    set_color(Color::LightGreen, Color::Black);
-                    println!("[+] File '{}' written to ZFS File Server!", name);
-                    println!("    - Size: {} bytes", content_bytes.len());
-                    println!("    - Merkle Root committed at TXG #{}", new_txg);
-                    println!("    - Checksum: Fletcher-4 verified");
-                }
-                Err(e) => {
-                    set_color(Color::LightRed, Color::Black);
-                    println!("[!] Write failed: {}", e);
-                }
+        match ZfsClient::write_file_by_path(path, content_bytes) {
+            Ok(new_txg) => {
+                set_color(Color::LightGreen, Color::Black);
+                println!("[+] File '{}' written to ZFS File Server!", path);
+                println!("    - Size: {} bytes", content_bytes.len());
+                println!("    - Merkle Root committed at TXG #{}", new_txg);
+                println!("    - Checksum: Fletcher-4 verified");
+            }
+            Err(e) => {
+                set_color(Color::LightRed, Color::Black);
+                println!("[!] Write failed for '{}': {}", path, e);
             }
         }
     }

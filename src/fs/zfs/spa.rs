@@ -125,6 +125,14 @@ impl Spa {
         (self.block_bitmap[word_idx] & (1u64 << bit_idx)) != 0
     }
 
+    /// Frees a previously allocated block in the SPA block bitmap.
+    pub fn free_block(&mut self, block: usize) {
+        if block > 0 && block < POOL_TOTAL_BLOCKS && self.is_block_used(block) {
+            self.mark_block(block, false);
+            self.allocated_blocks = self.allocated_blocks.saturating_sub(1);
+        }
+    }
+
     /// Allocates a new block using Copy-On-Write (CoW) allocation,
     /// writes the data into the allocated block, and computes the Fletcher-4 checksum.
     pub fn cow_allocate_block(&mut self, data: &[u8]) -> Result<BlockPointer, &'static str> {
