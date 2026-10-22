@@ -17,4 +17,5 @@ echo [*] Attaching updated kernel.iso to VirtualBox VM 'Hydra'...
 "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" storageattach "Hydra" --storagectl "IDE" --port 1 --device 0 --type dvddrive --medium "%~dp0dist\x86_64\kernel.iso"
 
 echo [*] Launching Hydra in VirtualBox...
-"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" startvm "Hydra"
+"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" startvm "Hydra" --type gui
+

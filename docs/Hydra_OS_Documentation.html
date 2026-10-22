@@ -431,6 +431,8 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <li class="toc-item"><a href="#doc-boot-stage7-ipc-mod" class="toc-link"><span class="toc-title">Inter-Process Communication Overview</span><span class="toc-sub">Microkernel message passing coordinating isolated userland services.</span></a></li>
 <li class="toc-item"><a href="#doc-boot-stage7-ipc-msg" class="toc-link"><span class="toc-title">Fast Register Messages & Delegation</span><span class="toc-sub">Fast 4-word inline register payload, protocol labels, and transferred capability tokens.</span></a></li>
 <li class="toc-item"><a href="#doc-boot-stage7-ipc-ep" class="toc-link"><span class="toc-title">Rendezvous Channels & Endpoints</span><span class="toc-sub">Circular FIFO ring buffers, rendezvous mailboxes, and thread-safe SharedEndpoint.</span></a></li>
+<li class="toc-stage-header">Stage 8: Interactive Shell</li>
+<li class="toc-item"><a href="#doc-boot-stage8-shell" class="toc-link"><span class="toc-title">Interactive Microkernel Shell & Command REPL</span><span class="toc-sub">Command REPL, real-time memory/CPU inspection, CSpace manipulation, and IPC testing.</span></a></li>
     </ul>
 </div>
 
@@ -461,6 +463,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">capability</span><span class="o">/</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">mod</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Capability types &amp; Rights bitflags (src/capability/mod.rs)</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">└──</span><span class="w"> </span><span class="n">table</span><span class="o">.</span><span class="n">md</span><span class="w">               </span><span class="c1"># Task capability table &amp; CSpace (src/capability/table.rs)</span>
+<span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">shell</span><span class="o">.</span><span class="n">md</span><span class="w">                   </span><span class="c1"># Interactive microkernel shell &amp; command REPL (src/shell.rs)</span>
 <span class="w">    </span><span class="err">└──</span><span class="w"> </span><span class="n">ipc</span><span class="o">/</span>
 <span class="w">        </span><span class="err">├──</span><span class="w"> </span><span class="n">mod</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># IPC subsystem root (src/ipc/mod.rs)</span>
 <span class="w">        </span><span class="err">├──</span><span class="w"> </span><span class="n">message</span><span class="o">.</span><span class="n">md</span><span class="w">             </span><span class="c1"># Fast register payload &amp; transferred caps (src/ipc/message.rs)</span>
@@ -489,7 +492,13 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <td style="text-align: left;"><strong>Console I/O</strong></td>
 <td style="text-align: left;"><a href="file:///d:/os/src/console.rs"><code>src/console.rs</code></a></td>
 <td style="text-align: left;"><a href="#doc-boot-stage2">docs/src/console.md</a></td>
-<td style="text-align: left;">Thread-safe <code>print!</code> / <code>println!</code> macros, UEFI screen color formatting.</td>
+<td style="text-align: left;">Thread-safe <code>print!</code> / <code>println!</code> macros, keyboard input, screen formatting.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Interactive Shell</strong></td>
+<td style="text-align: left;"><a href="file:///d:/os/src/shell.rs"><code>src/shell.rs</code></a></td>
+<td style="text-align: left;"><a href="#doc-boot-stage8-shell">docs/src/shell.md</a></td>
+<td style="text-align: left;">Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>GDT &amp; TSS</strong></td>
@@ -579,9 +588,9 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
    - <a href="#doc-boot-stage0">Legacy Boot Trampoline &amp; Long Mode Switch</a> (Multiboot2 header, 32-bit to 64-bit Long Mode switch)
    - <a href="#doc-build-toolchain">Build Automation &amp; Assembly Pipeline</a> (NASM toolchain and UEFI link settings)</li>
 <li><strong>UEFI Entry &amp; Bootstrap Orchestration</strong>:
-   - <a href="#doc-boot-stage1">Kernel Entry Point &amp; Bootstrap Pipeline</a> (UEFI <code>main()</code>, panic handler, subsystem coordination, halt loop)</li>
-<li><strong>Early Diagnostic Output</strong>:
-   - <a href="#doc-boot-stage2">UEFI Console &amp; Formatting</a> (<code>print!</code>, <code>println!</code>, thread-safe <code>CONSOLE</code> spinlock, UEFI screen color formatting)</li>
+   - <a href="#doc-boot-stage1">Kernel Entry Point &amp; Bootstrap Pipeline</a> (UEFI <code>main()</code>, panic handler, subsystem coordination, shell handover)</li>
+<li><strong>Early Diagnostic Output &amp; Keyboard Input</strong>:
+   - <a href="#doc-boot-stage2">UEFI Console &amp; Formatting</a> (<code>print!</code>, <code>println!</code>, thread-safe <code>CONSOLE</code> spinlock, keyboard polling, cursor management)</li>
 <li><strong>CPU Architecture &amp; Hardware Isolation (Step 1 &amp; 2)</strong>:
    - <a href="#doc-boot-stage3-mod">Architecture Abstraction Layer</a> (Hardware abstraction root)
    - <a href="#doc-boot-stage3-gdt">Global Descriptor Table (GDT) &amp; TSS</a> (Ring 0 / Ring 3 privilege levels, Task State Segment, Double Fault IST stack)
@@ -597,6 +606,8 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
    - <a href="#doc-boot-stage3-mod">IPC Subsystem Root</a> (Microkernel message passing architecture)
    - <a href="#doc-boot-stage7-ipc-msg">IPC Fast Register Messages</a> (4 fast inline register payload words, labels, transferred capability tokens)
    - <a href="#doc-boot-stage7-ipc-ep">IPC Endpoints &amp; Mailbox Rendezvous</a> (Circular FIFO ring buffers, rendezvous channels, thread-safe <code>SharedEndpoint</code>)</li>
+<li><strong>Interactive User Space &amp; Subsystem Diagnostics</strong>:
+   - <a href="#doc-boot-stage8-shell">Interactive Microkernel Shell</a> (Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing, RTC clock, reboot/shutdown)</li>
 </ol>
 <hr />
 <h2>📄 Generating the Unified Documentation PDF</h2>
@@ -984,14 +995,10 @@ An HTML version suitable for browser inspection or custom printing is also creat
 <hr />
 <h2>4. API Reference &amp; Methods</h2>
 <h3><code>arch::gdt::init()</code></h3>
-<p>Initializes and activates the hardware segmentation structures:
-1. <strong>Disables interrupts</strong> (<code>interrupts::disable()</code>) prior to swapping descriptor tables to ensure timer IRQs or external interrupts cannot trigger while segment registers hold transient or invalid selectors.
-2. <strong>Loads the GDT</strong> into the CPU via <code>lgdt</code>.
-3. <strong>Reloads segment registers</strong>:
-   - <code>CS::set_reg(kernel_code_selector)</code> sets the code segment.
-   - <code>DS</code>, <code>ES</code>, <code>SS</code> are reloaded with <code>kernel_data_selector</code>.
-   - <code>FS</code> and <code>GS</code> are loaded with <code>SegmentSelector::NULL</code>.
-4. <strong>Loads the Task State Segment (TSS)</strong> into the Task Register using <code>load_tss(tss_selector)</code>.</p>
+<p>Initializes and prepares Hydra's segmentation and hardware privilege structures in memory:
+1. <strong>Prepares Task State Segment (TSS)</strong>: Configures <code>interrupt_stack_table[0]</code> for the double-fault emergency stack and <code>privilege_stack_table[0]</code> for Ring 3 &rarr; Ring 0 privilege transitions.
+2. <strong>Builds the GDT</strong>: Allocates and configures Kernel Code, Kernel Data, User Data, User Code, and TSS descriptors.
+3. <strong>UEFI Firmware Coexistence</strong>: While native UEFI Boot Services are active, the firmware's IDT relies on firmware code selectors (e.g., <code>0x38</code> on VirtualBox EDK2). Hydra ensures GDT and TSS structures are initialized and accessible via <code>get_selectors()</code> without disrupting the firmware's active interrupt vectors.</p>
 <div class="codehilite"><pre><span></span><code><span class="n">arch</span><span class="p">::</span><span class="n">gdt</span><span class="p">::</span><span class="n">init</span><span class="p">();</span>
 </code></pre></div>
 
@@ -1700,6 +1707,176 @@ An HTML version suitable for browser inspection or custom printing is also creat
 <span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mailbox</span><span class="p">.</span><span class="n">receive</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="c1">// Process msg.label and msg.args...</span>
 <span class="p">}</span>
+</code></pre></div>
+</div>
+
+
+
+<div id="doc-boot-stage8-shell" class="doc-section">
+    <div class="section-stage-badge">Stage 8: Interactive Shell &bull; Boot Sequence Order #17</div>
+    <h1>Interactive Microkernel Shell Documentation</h1>
+<ul>
+<li><strong>Source File</strong>: <a href="file:///d:/os/src/shell.rs"><code>src/shell.rs</code></a></li>
+<li><strong>Subsystem</strong>: Microkernel User Interface &amp; Command REPL</li>
+</ul>
+<hr />
+<h2>1. Conceptual Overview</h2>
+<p>Operating system development often starts with non-interactive boot routines that print diagnostic logs and halt. To enable active exploration, debugging, and experimentation with kernel primitives on live hardware or virtual machines, Hydra provides an <strong>Interactive Microkernel Shell</strong>.</p>
+<p>The shell runs in UEFI text mode, accepting keyboard input via UEFI's <code>SimpleTextInput</code> protocol through <a href="file:///d:/os/src/console.rs"><code>src/console.rs</code></a>, parsing user commands, and dispatching operations to kernel subsystems:</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">+-------------------------------------------------------------+</span>
+<span class="c">|                 Hydra Interactive Shell                     |</span>
+<span class="c">|                   Prompt: `hydra</span><span class="nv">&gt;</span><span class="c"> `                         |</span>
+<span class="nb">+-------------------------------------------------------------+</span>
+<span class="c">   |          |           |            |           |</span>
+<span class="c">   v          v           v            v           v</span>
+<span class="k">[</span><span class="c"> CPU </span><span class="k">]</span><span class="c">    </span><span class="k">[</span><span class="c"> Memory </span><span class="k">]</span><span class="c">  </span><span class="k">[</span><span class="c"> Paging </span><span class="k">]</span><span class="c">   </span><span class="k">[</span><span class="c"> CSpace </span><span class="k">]</span><span class="c">   </span><span class="k">[</span><span class="c"> IPC </span><span class="k">]</span>
+<span class="c">Diagnostics  Allocator  Translation  Keyring    Rendezvous</span>
+</code></pre></div>
+
+<hr />
+<h2>2. Command Reference</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Command</th>
+<th style="text-align: left;">Syntax</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>help</code>, <code>?</code></td>
+<td style="text-align: left;"><code>help</code></td>
+<td style="text-align: left;">Displays the interactive command manual and usage summary.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>info</code>, <code>uname</code></td>
+<td style="text-align: left;"><code>info</code></td>
+<td style="text-align: left;">Prints Hydra Microkernel OS version, build target, and architecture overview.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>status</code></td>
+<td style="text-align: left;"><code>status</code></td>
+<td style="text-align: left;">Reports operational health across GDT, CPU, Frame Allocator, Paging, CSpace, and IPC.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cpu</code></td>
+<td style="text-align: left;"><code>cpu</code></td>
+<td style="text-align: left;">Displays CPU control registers (<code>CR0</code>, <code>CR2</code>, <code>CR3</code> PML4 root, <code>CR4</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>mem</code>, <code>memory</code></td>
+<td style="text-align: left;"><code>mem</code></td>
+<td style="text-align: left;">Displays physical memory manager statistics (Total Usable RAM, Allocated, Free).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alloc</code></td>
+<td style="text-align: left;"><code>alloc</code></td>
+<td style="text-align: left;">Allocates a 4 KiB physical memory frame from the bump allocator and returns its physical address.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>translate</code></td>
+<td style="text-align: left;"><code>translate &lt;hex_virt_addr&gt;</code></td>
+<td style="text-align: left;">Walks the active 4-level PML4 page table hierarchy to resolve virtual to physical addresses.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>caps</code>, <code>cspace</code></td>
+<td style="text-align: left;"><code>caps</code></td>
+<td style="text-align: left;">Inspects the active task's capability table (slot numbers, resource types, and rights bitflags).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cap_insert</code></td>
+<td style="text-align: left;"><code>cap_insert &lt;ep_id&gt;</code></td>
+<td style="text-align: left;">Inserts a new Endpoint capability into the task's CSpace.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cap_revoke</code></td>
+<td style="text-align: left;"><code>cap_revoke &lt;slot&gt;</code></td>
+<td style="text-align: left;">Revokes an existing capability from the specified CSpace slot.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipc</code></td>
+<td style="text-align: left;"><code>ipc &lt;label&gt; [a0] [a1] [a2]</code></td>
+<td style="text-align: left;">Sends and receives a fast register IPC message through rendezvous Endpoint #1.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>time</code>, <code>date</code></td>
+<td style="text-align: left;"><code>time</code></td>
+<td style="text-align: left;">Queries the hardware Real-Time Clock (RTC) via UEFI runtime services.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>color</code></td>
+<td style="text-align: left;"><code>color &lt;name&gt;</code></td>
+<td style="text-align: left;">Customizes shell prompt and text color (<code>cyan</code>, <code>green</code>, <code>yellow</code>, <code>red</code>, <code>white</code>, <code>magenta</code>, <code>blue</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>echo</code></td>
+<td style="text-align: left;"><code>echo &lt;text...&gt;</code></td>
+<td style="text-align: left;">Echoes input arguments back to the screen.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>clear</code>, <code>cls</code></td>
+<td style="text-align: left;"><code>clear</code></td>
+<td style="text-align: left;">Clears the active screen buffer and resets the cursor.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>panic</code></td>
+<td style="text-align: left;"><code>panic</code></td>
+<td style="text-align: left;">Manually triggers the kernel panic handler to verify diagnostic output.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>reboot</code></td>
+<td style="text-align: left;"><code>reboot</code></td>
+<td style="text-align: left;">Reboots the computer using UEFI cold reset runtime services.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>shutdown</code></td>
+<td style="text-align: left;"><code>shutdown</code></td>
+<td style="text-align: left;">Powers down the computer using UEFI shutdown runtime services.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>halt</code></td>
+<td style="text-align: left;"><code>halt</code></td>
+<td style="text-align: left;">Disables CPU interrupts and enters a low-power <code>hlt</code> loop.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>3. Architecture &amp; Key Features</h2>
+<h3>Thread-Safe Interactive Input</h3>
+<p>Interactive input is handled by <code>console::read_line</code>:
+- Characters are received from UEFI stdin with a 10 ms sleep interval via <code>uefi::boot::stall</code> to ensure low VM CPU utilization.
+- Real-time backspace support erases characters from screen and buffer seamlessly via cursor positioning.
+- Enter (<code>\r</code> or <code>\n</code>) submits the command line.</p>
+<h3>Multi-Tier Power Management (<code>shutdown</code> &amp; <code>reboot</code>)</h3>
+<p>Virtual machine firmware (such as VirtualBox's EFI and QEMU/EDK2) frequently stubs or hangs on generic UEFI runtime <code>ResetSystem(EfiResetShutdown)</code> prior to ACPI table activation. Hydra solves this by implementing direct hardware I/O power transitions:
+1. <strong>VirtualBox ACPI</strong>: Writes sleep state S5 bits to PIIX3/4 ACPI <code>PM1a_CNT</code> (I/O Port <code>0x4004</code>).
+2. <strong>QEMU ACPI</strong>: Writes to standard PIIX4 ACPI <code>PM1a_CNT</code> (I/O Port <code>0x604</code>) and debug exit (<code>0x501</code>).
+3. <strong>Cloud / Bochs ACPI</strong>: Writes to I/O Port <code>0xb004</code> and APM (<code>0xb2</code>).
+4. <strong>Reboot Sequencing</strong>: Pulses the 8042 keyboard controller reset line (<code>0x64</code>, <code>0xFE</code>) and the PCI reset control register (<code>0xCF9</code>, <code>0x06</code>) before falling back to UEFI cold reset.</p>
+<h3>Virtual Address Translation Inspection</h3>
+<p>The <code>translate</code> command allows live debugging of paging:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">hydra</span><span class="o">&gt;</span><span class="w"> </span><span class="n">translate</span><span class="w"> </span><span class="mh">0x400000</span>
+<span class="p">[</span><span class="o">*</span><span class="p">]</span><span class="w"> </span><span class="n">Translating</span><span class="w"> </span><span class="kr">Virtual</span><span class="w"> </span><span class="n">Address</span><span class="w"> </span><span class="mh">0x400000</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="n">PML4</span><span class="w"> </span><span class="n">tree</span><span class="o">:</span><span class="w"> </span><span class="n">Mapped</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Physical</span><span class="w"> </span><span class="n">Address</span><span class="w"> </span><span class="mh">0x400000</span>
+</code></pre></div>
+
+<h3>On-Demand Memory Allocation</h3>
+<p>The <code>alloc</code> command demonstrates the physical memory frame allocator in real-time:</p>
+<div class="codehilite"><pre><span></span><code><span class="nx">hydra</span><span class="p">&gt;</span><span class="w"> </span><span class="nx">alloc</span>
+<span class="p">[</span><span class="o">+</span><span class="p">]</span><span class="w"> </span><span class="nx">Successfully</span><span class="w"> </span><span class="nx">allocated</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="nx">KiB</span><span class="w"> </span><span class="nx">frame</span><span class="w"> </span><span class="nx">at</span><span class="w"> </span><span class="nx">physical</span><span class="w"> </span><span class="nx">address</span><span class="p">:</span><span class="w"> </span><span class="mh">0x101000</span>
+<span class="nx">hydra</span><span class="p">&gt;</span><span class="w"> </span><span class="nx">mem</span>
+<span class="nx">Physical</span><span class="w"> </span><span class="nx">Memory</span><span class="w"> </span><span class="nx">Manager</span><span class="w"> </span><span class="nx">Statistics</span><span class="p">:</span>
+<span class="w">  </span><span class="nx">Total</span><span class="w"> </span><span class="nx">Usable</span><span class="w"> </span><span class="nx">RAM</span><span class="p">:</span><span class="w">   </span><span class="o">...</span>
+<span class="w">  </span><span class="nx">Allocated</span><span class="w"> </span><span class="nx">Frames</span><span class="p">:</span><span class="w">   </span><span class="o">...</span>
+</code></pre></div>
+
+<h3>Live Microkernel IPC</h3>
+<p>The <code>ipc</code> command sends a message through a rendezvous endpoint and reads the delivered payload:</p>
+<div class="codehilite"><pre><span></span><code>hydra&gt; ipc 0x2001 100 200 300
+[+] Message queued to Endpoint #1: label=0x2001, args=[100, 200, 300, 0]
+[+] Rendezvous complete! Received message from Endpoint #1:
+    - Label: 0x2001
+    - Args:  [100, 200, 300, 0]
 </code></pre></div>
 </div>
 

@@ -1,8 +1,6 @@
 use spin::Lazy;
-use x86_64::instructions::interrupts;
-use x86_64::instructions::segmentation::{Segment, CS, DS, ES, FS, GS, SS};
-use x86_64::instructions::tables::load_tss;
 use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector};
+
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
 
@@ -53,20 +51,16 @@ static GDT: Lazy<(GlobalDescriptorTable, Selectors)> = Lazy::new(|| {
 });
 
 pub fn init() {
-    // Disable interrupts before swapping the GDT to prevent timer IRQs from referencing invalid selectors
-    interrupts::disable();
+    // Initialize TSS and GDT descriptor structures in memory
+    let _ = &*TSS;
+    let _ = &*GDT;
 
-    GDT.0.load();
-    unsafe {
-        CS::set_reg(GDT.1.kernel_code_selector);
-        DS::set_reg(GDT.1.kernel_data_selector);
-        ES::set_reg(GDT.1.kernel_data_selector);
-        SS::set_reg(GDT.1.kernel_data_selector);
-        FS::set_reg(SegmentSelector::NULL);
-        GS::set_reg(SegmentSelector::NULL);
-        load_tss(GDT.1.tss_selector);
-    }
+    // Note: While native UEFI Boot Services are active, the firmware's IDT
+    // and timer interrupts depend on the firmware GDT selectors.
+    // The GDT and TSS structures are fully initialized in memory and ready
+    // for task switching and Ring 3 userland processes.
 }
+
 
 pub fn get_selectors() -> &'static Selectors {
     &GDT.1

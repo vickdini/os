@@ -26,6 +26,7 @@ docs/
     ├── capability/
     │   ├── mod.md                 # Capability types & Rights bitflags (src/capability/mod.rs)
     │   └── table.md               # Task capability table & CSpace (src/capability/table.rs)
+    ├── shell.md                   # Interactive microkernel shell & command REPL (src/shell.rs)
     └── ipc/
         ├── mod.md                 # IPC subsystem root (src/ipc/mod.rs)
         ├── message.md             # Fast register payload & transferred caps (src/ipc/message.rs)
@@ -39,7 +40,8 @@ docs/
 | Subsystem | Source File | Documentation | Key Concepts & Analogies |
 | :--- | :--- | :--- | :--- |
 | **Boot & Main** | [`src/main.rs`](file:///d:/os/src/main.rs) | [docs/src/main.md](file:///d:/os/docs/src/main.md) | Entry point, boot sequence, hardware diagnostics, and panic handler. |
-| **Console I/O** | [`src/console.rs`](file:///d:/os/src/console.rs) | [docs/src/console.md](file:///d:/os/docs/src/console.md) | Thread-safe `print!` / `println!` macros, UEFI screen color formatting. |
+| **Console I/O** | [`src/console.rs`](file:///d:/os/src/console.rs) | [docs/src/console.md](file:///d:/os/docs/src/console.md) | Thread-safe `print!` / `println!` macros, keyboard input, screen formatting. |
+| **Interactive Shell**| [`src/shell.rs`](file:///d:/os/src/shell.rs) | [docs/src/shell.md](file:///d:/os/docs/src/shell.md) | Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing. |
 | **GDT & TSS** | [`src/arch/gdt.rs`](file:///d:/os/src/arch/gdt.rs) | [docs/src/arch/gdt.md](file:///d:/os/docs/src/arch/gdt.md) | Ring 0 / Ring 3 privilege levels, Task State Segment, double-fault stack. |
 | **CPU Control** | [`src/arch/cpu.rs`](file:///d:/os/src/arch/cpu.rs) | [docs/src/arch/cpu.md](file:///d:/os/docs/src/arch/cpu.md) | Control registers (`CR0`, `CR2`, `CR3`, `CR4`), paging roots. |
 | **Arch Root** | [`src/arch/mod.rs`](file:///d:/os/src/arch/mod.rs) | [docs/src/arch/mod.md](file:///d:/os/docs/src/arch/mod.md) | Architecture abstraction layer for hardware independence. |
@@ -64,9 +66,9 @@ When understanding or reviewing Hydra OS from initial hardware power-on through 
    - [Legacy Boot Trampoline & Long Mode Switch](file:///d:/os/docs/src/arch/x86_64/boot.md) (Multiboot2 header, 32-bit to 64-bit Long Mode switch)
    - [Build Automation & Assembly Pipeline](file:///d:/os/docs/build.md) (NASM toolchain and UEFI link settings)
 2. **UEFI Entry & Bootstrap Orchestration**:
-   - [Kernel Entry Point & Bootstrap Pipeline](file:///d:/os/docs/src/main.md) (UEFI `main()`, panic handler, subsystem coordination, halt loop)
-3. **Early Diagnostic Output**:
-   - [UEFI Console & Formatting](file:///d:/os/docs/src/console.md) (`print!`, `println!`, thread-safe `CONSOLE` spinlock, UEFI screen color formatting)
+   - [Kernel Entry Point & Bootstrap Pipeline](file:///d:/os/docs/src/main.md) (UEFI `main()`, panic handler, subsystem coordination, shell handover)
+3. **Early Diagnostic Output & Keyboard Input**:
+   - [UEFI Console & Formatting](file:///d:/os/docs/src/console.md) (`print!`, `println!`, thread-safe `CONSOLE` spinlock, keyboard polling, cursor management)
 4. **CPU Architecture & Hardware Isolation (Step 1 & 2)**:
    - [Architecture Abstraction Layer](file:///d:/os/docs/src/arch/mod.md) (Hardware abstraction root)
    - [Global Descriptor Table (GDT) & TSS](file:///d:/os/docs/src/arch/gdt.md) (Ring 0 / Ring 3 privilege levels, Task State Segment, Double Fault IST stack)
@@ -82,6 +84,8 @@ When understanding or reviewing Hydra OS from initial hardware power-on through 
    - [IPC Subsystem Root](file:///d:/os/docs/src/ipc/mod.md) (Microkernel message passing architecture)
    - [IPC Fast Register Messages](file:///d:/os/docs/src/ipc/message.md) (4 fast inline register payload words, labels, transferred capability tokens)
    - [IPC Endpoints & Mailbox Rendezvous](file:///d:/os/docs/src/ipc/endpoint.md) (Circular FIFO ring buffers, rendezvous channels, thread-safe `SharedEndpoint`)
+8. **Interactive User Space & Subsystem Diagnostics**:
+   - [Interactive Microkernel Shell](file:///d:/os/docs/src/shell.md) (Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing, RTC clock, reboot/shutdown)
 
 ---
 

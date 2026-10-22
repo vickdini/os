@@ -150,7 +150,15 @@ DOCS_ORDER = [
         "anchor": "doc-boot-stage7-ipc-ep",
         "subtitle": "Circular FIFO ring buffers, rendezvous mailboxes, and thread-safe SharedEndpoint.",
     },
+    {
+        "stage": "Stage 8: Interactive Shell",
+        "title": "Interactive Microkernel Shell & Command REPL",
+        "file": "docs/src/shell.md",
+        "anchor": "doc-boot-stage8-shell",
+        "subtitle": "Command REPL, real-time memory/CPU inspection, CSpace manipulation, and IPC testing.",
+    },
 ]
+
 
 # Map of relative file paths to their anchor IDs for internal links
 FILE_TO_ANCHOR = {item["file"]: item["anchor"] for item in DOCS_ORDER}

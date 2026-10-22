@@ -69,14 +69,10 @@ pub struct Selectors {
 ## 4. API Reference & Methods
 
 ### `arch::gdt::init()`
-Initializes and activates the hardware segmentation structures:
-1. **Disables interrupts** (`interrupts::disable()`) prior to swapping descriptor tables to ensure timer IRQs or external interrupts cannot trigger while segment registers hold transient or invalid selectors.
-2. **Loads the GDT** into the CPU via `lgdt`.
-3. **Reloads segment registers**:
-   - `CS::set_reg(kernel_code_selector)` sets the code segment.
-   - `DS`, `ES`, `SS` are reloaded with `kernel_data_selector`.
-   - `FS` and `GS` are loaded with `SegmentSelector::NULL`.
-4. **Loads the Task State Segment (TSS)** into the Task Register using `load_tss(tss_selector)`.
+Initializes and prepares Hydra's segmentation and hardware privilege structures in memory:
+1. **Prepares Task State Segment (TSS)**: Configures `interrupt_stack_table[0]` for the double-fault emergency stack and `privilege_stack_table[0]` for Ring 3 &rarr; Ring 0 privilege transitions.
+2. **Builds the GDT**: Allocates and configures Kernel Code, Kernel Data, User Data, User Code, and TSS descriptors.
+3. **UEFI Firmware Coexistence**: While native UEFI Boot Services are active, the firmware's IDT relies on firmware code selectors (e.g., `0x38` on VirtualBox EDK2). Hydra ensures GDT and TSS structures are initialized and accessible via `get_selectors()` without disrupting the firmware's active interrupt vectors.
 
 ```rust
 arch::gdt::init();

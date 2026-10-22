@@ -7,6 +7,7 @@ pub mod capability;
 pub mod console;
 pub mod ipc;
 pub mod memory;
+pub mod shell;
 
 use core::panic::PanicInfo;
 use uefi::prelude::*;
@@ -152,8 +153,7 @@ fn main() -> Status {
     println!(" [+] HYDRA MICROKERNEL PHASE 1 SUBSYSTEMS OPERATIONAL!      ");
     println!("============================================================");
 
-    x86_64::instructions::interrupts::disable();
-    loop {
-        x86_64::instructions::hlt();
-    }
+    // Hand over execution to the interactive microkernel shell
+    shell::run();
 }
+
