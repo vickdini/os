@@ -1716,21 +1716,30 @@ An HTML version suitable for browser inspection or custom printing is also creat
     <div class="section-stage-badge">Stage 8: Interactive Shell &bull; Boot Sequence Order #17</div>
     <h1>Interactive Microkernel Shell Documentation</h1>
 <ul>
-<li><strong>Source File</strong>: <a href="file:///d:/os/src/shell.rs"><code>src/shell.rs</code></a></li>
+<li><strong>Source Directory</strong>: <a href="file:///d:/os/src/shell/"><code>src/shell/</code></a></li>
 <li><strong>Subsystem</strong>: Microkernel User Interface &amp; Command REPL</li>
 </ul>
 <hr />
 <h2>1. Conceptual Overview</h2>
 <p>Operating system development often starts with non-interactive boot routines that print diagnostic logs and halt. To enable active exploration, debugging, and experimentation with kernel primitives on live hardware or virtual machines, Hydra provides an <strong>Interactive Microkernel Shell</strong>.</p>
-<p>The shell runs in UEFI text mode, accepting keyboard input via UEFI's <code>SimpleTextInput</code> protocol through <a href="file:///d:/os/src/console.rs"><code>src/console.rs</code></a>, parsing user commands, and dispatching operations to kernel subsystems:</p>
-<div class="codehilite"><pre><span></span><code><span class="nb">+-------------------------------------------------------------+</span>
-<span class="c">|                 Hydra Interactive Shell                     |</span>
-<span class="c">|                   Prompt: `hydra</span><span class="nv">&gt;</span><span class="c"> `                         |</span>
-<span class="nb">+-------------------------------------------------------------+</span>
-<span class="c">   |          |           |            |           |</span>
-<span class="c">   v          v           v            v           v</span>
-<span class="k">[</span><span class="c"> CPU </span><span class="k">]</span><span class="c">    </span><span class="k">[</span><span class="c"> Memory </span><span class="k">]</span><span class="c">  </span><span class="k">[</span><span class="c"> Paging </span><span class="k">]</span><span class="c">   </span><span class="k">[</span><span class="c"> CSpace </span><span class="k">]</span><span class="c">   </span><span class="k">[</span><span class="c"> IPC </span><span class="k">]</span>
-<span class="c">Diagnostics  Allocator  Translation  Keyring    Rendezvous</span>
+<p>The shell is architected as a modular, extensible command registry where every command or tool lives in its own dedicated source file:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">src</span><span class="o">/</span><span class="n">shell</span><span class="o">/</span>
+<span class="n">├──</span><span class="w"> </span><span class="k">mod</span><span class="p">.</span><span class="n">rs</span><span class="w">                  </span><span class="c1"># REPL loop, banner, and command dispatcher</span>
+<span class="n">├──</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">rs</span><span class="w">                </span><span class="c1"># ShellState (CSpace, IPC endpoint, prompt color)</span>
+<span class="n">├──</span><span class="w"> </span><span class="n">command</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># The `Command` trait and argument parsing helpers</span>
+<span class="n">└──</span><span class="w"> </span><span class="n">commands</span><span class="o">/</span><span class="w">               </span><span class="c1"># Modular Command Implementations</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">mod</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># Static command registry (`COMMANDS`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">help</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># Help command &amp; usage manual generator</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">info</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># OS version &amp; vision (`info`, `uname`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">status</span><span class="p">.</span><span class="n">rs</span><span class="w">           </span><span class="c1"># Subsystem health inspection</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">cpu</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># CPU control registers (`cpu`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">mem</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># Memory statistics &amp; allocation (`mem`, `alloc`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">translate</span><span class="p">.</span><span class="n">rs</span><span class="w">        </span><span class="c1"># Virtual-to-physical paging translation (`translate`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">caps</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># CSpace inspection &amp; revocation (`caps`, `cap_insert`, `cap_revoke`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">ipc</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># Microkernel message rendezvous (`ipc`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="kt">time</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># Real-Time Clock (`time`, `date`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">power</span><span class="p">.</span><span class="n">rs</span><span class="w">            </span><span class="c1"># ACPI/UEFI power management (`shutdown`, `reboot`, `halt`)</span>
+<span class="w">    </span><span class="n">└──</span><span class="w"> </span><span class="n">misc</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># Utilities (`color`, `echo`, `clear`, `panic`)</span>
 </code></pre></div>
 
 <hr />
@@ -1746,8 +1755,8 @@ An HTML version suitable for browser inspection or custom printing is also creat
 <tbody>
 <tr>
 <td style="text-align: left;"><code>help</code>, <code>?</code></td>
-<td style="text-align: left;"><code>help</code></td>
-<td style="text-align: left;">Displays the interactive command manual and usage summary.</td>
+<td style="text-align: left;"><code>help [cmd]</code></td>
+<td style="text-align: left;">Displays the interactive command manual and specific usage.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>info</code>, <code>uname</code></td>
@@ -1796,7 +1805,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 </tr>
 <tr>
 <td style="text-align: left;"><code>ipc</code></td>
-<td style="text-align: left;"><code>ipc &lt;label&gt; [a0] [a1] [a2]</code></td>
+<td style="text-align: left;"><code>ipc &lt;label&gt; [a0] [a1]</code></td>
 <td style="text-align: left;">Sends and receives a fast register IPC message through rendezvous Endpoint #1.</td>
 </tr>
 <tr>
@@ -1827,12 +1836,12 @@ An HTML version suitable for browser inspection or custom printing is also creat
 <tr>
 <td style="text-align: left;"><code>reboot</code></td>
 <td style="text-align: left;"><code>reboot</code></td>
-<td style="text-align: left;">Reboots the computer using UEFI cold reset runtime services.</td>
+<td style="text-align: left;">Reboots the computer via 8042 keyboard pulse, PCI reset, and UEFI cold reset.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>shutdown</code></td>
 <td style="text-align: left;"><code>shutdown</code></td>
-<td style="text-align: left;">Powers down the computer using UEFI shutdown runtime services.</td>
+<td style="text-align: left;">Powers down the computer via VirtualBox/QEMU ACPI I/O and UEFI shutdown.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>halt</code></td>
@@ -1842,7 +1851,56 @@ An HTML version suitable for browser inspection or custom printing is also creat
 </tbody>
 </table>
 <hr />
-<h2>3. Architecture &amp; Key Features</h2>
+<h2>3. How New Commands &amp; Programs are Integrated</h2>
+<h3>Step 1: Create a New Command File</h3>
+<p>Create a new file in <code>src/shell/commands/</code>, e.g. <code>src/shell/commands/my_tool.rs</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">use</span><span class="w"> </span><span class="k">crate</span><span class="p">::</span><span class="n">console</span><span class="p">::</span><span class="n">set_color</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">uefi</span><span class="p">::</span><span class="n">proto</span><span class="p">::</span><span class="n">console</span><span class="p">::</span><span class="n">text</span><span class="p">::</span><span class="n">Color</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="k">crate</span><span class="p">::</span><span class="n">shell</span><span class="p">::</span><span class="n">command</span><span class="p">::</span><span class="n">Command</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="k">crate</span><span class="p">::</span><span class="n">shell</span><span class="p">::</span><span class="n">state</span><span class="p">::</span><span class="n">ShellState</span><span class="p">;</span>
+
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">MyToolCommand</span><span class="p">;</span>
+
+<span class="k">impl</span><span class="w"> </span><span class="n">Command</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">MyToolCommand</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">name</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="kp">&amp;</span><span class="o">'</span><span class="nb">static</span><span class="w"> </span><span class="kt">str</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="s">"mytool"</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">aliases</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="kp">&amp;</span><span class="o">'</span><span class="nb">static</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;'</span><span class="nb">static</span><span class="w"> </span><span class="kt">str</span><span class="p">]</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="o">&amp;</span><span class="p">[</span><span class="s">"mt"</span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">description</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="kp">&amp;</span><span class="o">'</span><span class="nb">static</span><span class="w"> </span><span class="kt">str</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="s">"Demonstrates custom command integration"</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">usage</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="kp">&amp;</span><span class="o">'</span><span class="nb">static</span><span class="w"> </span><span class="kt">str</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="s">"mytool &lt;argument&gt;"</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">args</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="p">[</span><span class="o">&amp;</span><span class="kt">str</span><span class="p">],</span><span class="w"> </span><span class="n">state</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">mut</span><span class="w"> </span><span class="n">ShellState</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">set_color</span><span class="p">(</span><span class="n">Color</span><span class="p">::</span><span class="n">LightGreen</span><span class="p">,</span><span class="w"> </span><span class="n">Color</span><span class="p">::</span><span class="n">Black</span><span class="p">);</span>
+<span class="w">        </span><span class="fm">println!</span><span class="p">(</span><span class="s">"[+] MyTool executed with args: {:?}"</span><span class="p">,</span><span class="w"> </span><span class="n">args</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>Step 2: Register the Command</h3>
+<p>In <a href="file:///d:/os/src/shell/commands/mod.rs"><code>src/shell/commands/mod.rs</code></a>:
+1. Add the module: <code>pub mod my_tool;</code>
+2. Export the struct: <code>pub use my_tool::MyToolCommand;</code>
+3. Add <code>&amp;MyToolCommand</code> to the <code>COMMANDS</code> slice:
+   <code>rust
+   pub static COMMANDS: &amp;[&amp;dyn Command] = &amp;[
+       ...
+       &amp;MyToolCommand,
+   ];</code></p>
+<p>The shell automatically:
+- Parses user arguments and routes execution to <code>execute()</code>.
+- Supports the command's primary name and all specified aliases.
+- Auto-generates help documentation in <code>help</code> and <code>help mytool</code>.</p>
+<hr />
+<h2>4. Architecture &amp; Key Features</h2>
 <h3>Thread-Safe Interactive Input</h3>
 <p>Interactive input is handled by <code>console::read_line</code>:
 - Characters are received from UEFI stdin with a 10 ms sleep interval via <code>uefi::boot::stall</code> to ensure low VM CPU utilization.

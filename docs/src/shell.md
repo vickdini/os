@@ -1,6 +1,6 @@
 # Interactive Microkernel Shell Documentation
 
-- **Source File**: [`src/shell.rs`](file:///d:/os/src/shell.rs)
+- **Source Directory**: [`src/shell/`](file:///d:/os/src/shell/)
 - **Subsystem**: Microkernel User Interface & Command REPL
 
 ---
@@ -9,17 +9,26 @@
 
 Operating system development often starts with non-interactive boot routines that print diagnostic logs and halt. To enable active exploration, debugging, and experimentation with kernel primitives on live hardware or virtual machines, Hydra provides an **Interactive Microkernel Shell**.
 
-The shell runs in UEFI text mode, accepting keyboard input via UEFI's `SimpleTextInput` protocol through [`src/console.rs`](file:///d:/os/src/console.rs), parsing user commands, and dispatching operations to kernel subsystems:
+The shell is architected as a modular, extensible command registry where every command or tool lives in its own dedicated source file:
 
 ```
-+-------------------------------------------------------------+
-|                 Hydra Interactive Shell                     |
-|                   Prompt: `hydra> `                         |
-+-------------------------------------------------------------+
-   |          |           |            |           |
-   v          v           v            v           v
-[ CPU ]    [ Memory ]  [ Paging ]   [ CSpace ]   [ IPC ]
-Diagnostics  Allocator  Translation  Keyring    Rendezvous
+src/shell/
+├── mod.rs                  # REPL loop, banner, and command dispatcher
+├── state.rs                # ShellState (CSpace, IPC endpoint, prompt color)
+├── command.rs              # The `Command` trait and argument parsing helpers
+└── commands/               # Modular Command Implementations
+    ├── mod.rs              # Static command registry (`COMMANDS`)
+    ├── help.rs             # Help command & usage manual generator
+    ├── info.rs             # OS version & vision (`info`, `uname`)
+    ├── status.rs           # Subsystem health inspection
+    ├── cpu.rs              # CPU control registers (`cpu`)
+    ├── mem.rs              # Memory statistics & allocation (`mem`, `alloc`)
+    ├── translate.rs        # Virtual-to-physical paging translation (`translate`)
+    ├── caps.rs             # CSpace inspection & revocation (`caps`, `cap_insert`, `cap_revoke`)
+    ├── ipc.rs              # Microkernel message rendezvous (`ipc`)
+    ├── time.rs             # Real-Time Clock (`time`, `date`)
+    ├── power.rs            # ACPI/UEFI power management (`shutdown`, `reboot`, `halt`)
+    └── misc.rs             # Utilities (`color`, `echo`, `clear`, `panic`)
 ```
 
 ---
@@ -28,7 +37,7 @@ Diagnostics  Allocator  Translation  Keyring    Rendezvous
 
 | Command | Syntax | Description |
 | :--- | :--- | :--- |
-| `help`, `?` | `help` | Displays the interactive command manual and usage summary. |
+| `help`, `?` | `help [cmd]` | Displays the interactive command manual and specific usage. |
 | `info`, `uname` | `info` | Prints Hydra Microkernel OS version, build target, and architecture overview. |
 | `status` | `status` | Reports operational health across GDT, CPU, Frame Allocator, Paging, CSpace, and IPC. |
 | `cpu` | `cpu` | Displays CPU control registers (`CR0`, `CR2`, `CR3` PML4 root, `CR4`). |
@@ -38,19 +47,75 @@ Diagnostics  Allocator  Translation  Keyring    Rendezvous
 | `caps`, `cspace` | `caps` | Inspects the active task's capability table (slot numbers, resource types, and rights bitflags). |
 | `cap_insert` | `cap_insert <ep_id>` | Inserts a new Endpoint capability into the task's CSpace. |
 | `cap_revoke` | `cap_revoke <slot>` | Revokes an existing capability from the specified CSpace slot. |
-| `ipc` | `ipc <label> [a0] [a1] [a2]` | Sends and receives a fast register IPC message through rendezvous Endpoint #1. |
+| `ipc` | `ipc <label> [a0] [a1]` | Sends and receives a fast register IPC message through rendezvous Endpoint #1. |
 | `time`, `date` | `time` | Queries the hardware Real-Time Clock (RTC) via UEFI runtime services. |
 | `color` | `color <name>` | Customizes shell prompt and text color (`cyan`, `green`, `yellow`, `red`, `white`, `magenta`, `blue`). |
 | `echo` | `echo <text...>` | Echoes input arguments back to the screen. |
 | `clear`, `cls` | `clear` | Clears the active screen buffer and resets the cursor. |
 | `panic` | `panic` | Manually triggers the kernel panic handler to verify diagnostic output. |
-| `reboot` | `reboot` | Reboots the computer using UEFI cold reset runtime services. |
-| `shutdown` | `shutdown` | Powers down the computer using UEFI shutdown runtime services. |
+| `reboot` | `reboot` | Reboots the computer via 8042 keyboard pulse, PCI reset, and UEFI cold reset. |
+| `shutdown` | `shutdown` | Powers down the computer via VirtualBox/QEMU ACPI I/O and UEFI shutdown. |
 | `halt` | `halt` | Disables CPU interrupts and enters a low-power `hlt` loop. |
 
 ---
 
-## 3. Architecture & Key Features
+## 3. How New Commands & Programs are Integrated
+
+### Step 1: Create a New Command File
+Create a new file in `src/shell/commands/`, e.g. `src/shell/commands/my_tool.rs`:
+
+```rust
+use crate::console::set_color;
+use uefi::proto::console::text::Color;
+use crate::shell::command::Command;
+use crate::shell::state::ShellState;
+
+pub struct MyToolCommand;
+
+impl Command for MyToolCommand {
+    fn name(&self) -> &'static str {
+        "mytool"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["mt"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Demonstrates custom command integration"
+    }
+
+    fn usage(&self) -> &'static str {
+        "mytool <argument>"
+    }
+
+    fn execute(&self, args: &[&str], state: &mut ShellState) {
+        set_color(Color::LightGreen, Color::Black);
+        println!("[+] MyTool executed with args: {:?}", args);
+    }
+}
+```
+
+### Step 2: Register the Command
+In [`src/shell/commands/mod.rs`](file:///d:/os/src/shell/commands/mod.rs):
+1. Add the module: `pub mod my_tool;`
+2. Export the struct: `pub use my_tool::MyToolCommand;`
+3. Add `&MyToolCommand` to the `COMMANDS` slice:
+   ```rust
+   pub static COMMANDS: &[&dyn Command] = &[
+       ...
+       &MyToolCommand,
+   ];
+   ```
+
+The shell automatically:
+- Parses user arguments and routes execution to `execute()`.
+- Supports the command's primary name and all specified aliases.
+- Auto-generates help documentation in `help` and `help mytool`.
+
+---
+
+## 4. Architecture & Key Features
 
 ### Thread-Safe Interactive Input
 Interactive input is handled by `console::read_line`:
