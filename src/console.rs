@@ -4,11 +4,69 @@ use spin::Mutex;
 use uefi::proto::console::text::{Color, Key, ScanCode};
 
 const SCROLLBACK_MAX_LINES: usize = 512;
-const SCROLLBACK_LINE_LEN: usize = 80;
+const SCROLLBACK_LINE_LEN: usize = 128;
+
+pub fn color_to_u8(c: Color) -> u8 {
+    match c {
+        Color::Black => 0,
+        Color::Blue => 1,
+        Color::Green => 2,
+        Color::Cyan => 3,
+        Color::Red => 4,
+        Color::Magenta => 5,
+        Color::Brown => 6,
+        Color::LightGray => 7,
+        Color::DarkGray => 8,
+        Color::LightBlue => 9,
+        Color::LightGreen => 10,
+        Color::LightCyan => 11,
+        Color::LightRed => 12,
+        Color::LightMagenta => 13,
+        Color::Yellow => 14,
+        Color::White => 15,
+    }
+}
+
+pub fn u8_to_color(val: u8) -> Color {
+    match val & 0x0F {
+        0 => Color::Black,
+        1 => Color::Blue,
+        2 => Color::Green,
+        3 => Color::Cyan,
+        4 => Color::Red,
+        5 => Color::Magenta,
+        6 => Color::Brown,
+        7 => Color::LightGray,
+        8 => Color::DarkGray,
+        9 => Color::LightBlue,
+        10 => Color::LightGreen,
+        11 => Color::LightCyan,
+        12 => Color::LightRed,
+        13 => Color::LightMagenta,
+        14 => Color::Yellow,
+        _ => Color::White,
+    }
+}
+
+pub fn u8_to_bg_color(val: u8) -> Color {
+    match (val >> 4) & 0x07 {
+        0 => Color::Black,
+        1 => Color::Blue,
+        2 => Color::Green,
+        3 => Color::Cyan,
+        4 => Color::Red,
+        5 => Color::Magenta,
+        6 => Color::Brown,
+        _ => Color::LightGray,
+    }
+}
 
 pub struct ScrollbackBuffer {
     lines: [[u8; SCROLLBACK_LINE_LEN]; SCROLLBACK_MAX_LINES],
+    attrs: [[u8; SCROLLBACK_LINE_LEN]; SCROLLBACK_MAX_LINES],
     lens: [usize; SCROLLBACK_MAX_LINES],
+    cur_line: [u8; SCROLLBACK_LINE_LEN],
+    cur_attrs: [u8; SCROLLBACK_LINE_LEN],
     head: usize,
     count: usize,
     cur_len: usize,
@@ -18,48 +76,67 @@ impl ScrollbackBuffer {
     pub const fn new() -> Self {
         Self {
             lines: [[0u8; SCROLLBACK_LINE_LEN]; SCROLLBACK_MAX_LINES],
+            attrs: [[0x0Fu8; SCROLLBACK_LINE_LEN]; SCROLLBACK_MAX_LINES],
             lens: [0; SCROLLBACK_MAX_LINES],
+            cur_line: [0u8; SCROLLBACK_LINE_LEN],
+            cur_attrs: [0x0Fu8; SCROLLBACK_LINE_LEN],
             head: 0,
             count: 0,
             cur_len: 0,
         }
     }
 
-    pub fn push_str(&mut self, s: &str) {
+    pub fn push_str(&mut self, s: &str, attr: u8) {
         for b in s.bytes() {
             if b == b'\n' {
-                self.lens[self.head] = self.cur_len;
-                self.head = (self.head + 1) % SCROLLBACK_MAX_LINES;
-                if self.count < SCROLLBACK_MAX_LINES {
-                    self.count += 1;
-                }
-                self.cur_len = 0;
+                self.commit_cur_line();
             } else if b == b'\r' {
                 // Ignore carriage return
-            } else if self.cur_len < SCROLLBACK_LINE_LEN {
-                let h = self.head;
+            } else {
+                if self.cur_len == SCROLLBACK_LINE_LEN {
+                    self.commit_cur_line();
+                }
                 let c = self.cur_len;
-                self.lines[h][c] = b;
+                self.cur_line[c] = b;
+                self.cur_attrs[c] = attr;
                 self.cur_len += 1;
             }
         }
+    }
+
+    fn commit_cur_line(&mut self) {
+        let h = self.head;
+        let len = self.cur_len;
+        self.lines[h][..len].copy_from_slice(&self.cur_line[..len]);
+        self.attrs[h][..len].copy_from_slice(&self.cur_attrs[..len]);
+        self.lens[h] = len;
+        self.head = (self.head + 1) % SCROLLBACK_MAX_LINES;
+        if self.count < SCROLLBACK_MAX_LINES {
+            self.count += 1;
+        }
+        self.cur_len = 0;
     }
 
     pub fn total_lines(&self) -> usize {
         self.count + if self.cur_len > 0 { 1 } else { 0 }
     }
 
-    pub fn get_line<'a>(&self, idx: usize, buf: &'a mut [u8; SCROLLBACK_LINE_LEN]) -> Option<&'a str> {
+    pub fn get_line_with_attrs(
+        &self,
+        idx: usize,
+        line_buf: &mut [u8; SCROLLBACK_LINE_LEN],
+        attr_buf: &mut [u8; SCROLLBACK_LINE_LEN],
+    ) -> Option<usize> {
         let total = self.total_lines();
         if idx >= total {
             return None;
         }
 
         if idx == self.count && self.cur_len > 0 {
-            let head = self.head;
             let len = self.cur_len;
-            buf[..len].copy_from_slice(&self.lines[head][..len]);
-            return core::str::from_utf8(&buf[..len]).ok();
+            line_buf[..len].copy_from_slice(&self.cur_line[..len]);
+            attr_buf[..len].copy_from_slice(&self.cur_attrs[..len]);
+            return Some(len);
         }
 
         let ring_idx = if self.count < SCROLLBACK_MAX_LINES {
@@ -69,8 +146,9 @@ impl ScrollbackBuffer {
         };
 
         let len = self.lens[ring_idx];
-        buf[..len].copy_from_slice(&self.lines[ring_idx][..len]);
-        core::str::from_utf8(&buf[..len]).ok()
+        line_buf[..len].copy_from_slice(&self.lines[ring_idx][..len]);
+        attr_buf[..len].copy_from_slice(&self.attrs[ring_idx][..len]);
+        Some(len)
     }
 }
 
@@ -78,19 +156,22 @@ pub static CONSOLE: Mutex<Console> = Mutex::new(Console::new());
 
 pub struct Console {
     pub scrollback: ScrollbackBuffer,
+    pub current_attr: u8,
 }
 
 impl Console {
     pub const fn new() -> Self {
         Self {
             scrollback: ScrollbackBuffer::new(),
+            current_attr: 0x0F, // White on Black
         }
     }
 }
 
 impl Write for Console {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.scrollback.push_str(s);
+        let attr = self.current_attr;
+        self.scrollback.push_str(s, attr);
         uefi::system::with_stdout(|stdout| {
             let _ = stdout.write_str(s);
         });
@@ -99,6 +180,10 @@ impl Write for Console {
 }
 
 pub fn set_color(foreground: Color, background: Color) {
+    {
+        let mut console = CONSOLE.lock();
+        console.current_attr = color_to_u8(foreground) | (color_to_u8(background) << 4);
+    }
     uefi::system::with_stdout(|stdout| {
         let _ = stdout.set_color(foreground, background);
     });
@@ -269,6 +354,37 @@ pub fn max_scroll_offset() -> usize {
     total.saturating_sub(rows.saturating_sub(1))
 }
 
+fn render_formatted_line(line: &[u8], attrs: &[u8]) {
+    let len = line.len();
+    if len == 0 {
+        return;
+    }
+
+    let mut start = 0;
+    while start < len {
+        let current_attr = attrs[start];
+        let mut end = start + 1;
+        while end < len && attrs[end] == current_attr {
+            end += 1;
+        }
+
+        let fg = u8_to_color(current_attr);
+        let bg = u8_to_bg_color(current_attr);
+        uefi::system::with_stdout(|stdout| {
+            let _ = stdout.set_color(fg, bg);
+            if let Ok(segment) = core::str::from_utf8(&line[start..end]) {
+                let _ = stdout.write_str(segment);
+            }
+        });
+
+        start = end;
+    }
+    // Restore default text colors
+    uefi::system::with_stdout(|stdout| {
+        let _ = stdout.set_color(Color::White, Color::Black);
+    });
+}
+
 fn format_scroll_status<'a>(buf: &'a mut [u8], top: usize, bottom: usize, total: usize, offset: usize) -> &'a str {
     struct BufWriter<'b> {
         buf: &'b mut [u8],
@@ -288,11 +404,11 @@ fn format_scroll_status<'a>(buf: &'a mut [u8], top: usize, bottom: usize, total:
     let mut writer = BufWriter { buf, pos: 0 };
     let _ = write!(
         writer,
-        "-- SCROLL LOCK (scrolled up {} lines, {}-{} of {}) [↑/↓ to scroll] --",
+        "-- SCROLL LOCK (up {} lines, lines {}-{} of {}) [UP/DOWN or PgUp/PgDn, ESC to exit] --",
         offset, top, bottom, total
     );
     let len = writer.pos;
-    core::str::from_utf8(&buf[..len]).unwrap_or("-- SCROLL LOCK ACTIVE [↑/↓ to scroll] --")
+    core::str::from_utf8(&buf[..len]).unwrap_or("-- SCROLL LOCK ACTIVE [UP/DOWN to scroll, ESC to exit] --")
 }
 
 /// Draws the terminal screen shifted up by `offset` lines.
@@ -311,15 +427,17 @@ pub fn draw_scroll_viewport(
 
     clear_screen();
 
+    let mut line_buf = [0u8; SCROLLBACK_LINE_LEN];
+    let mut attr_buf = [0u8; SCROLLBACK_LINE_LEN];
+
     if offset == 0 {
         // Live bottom view
         let top = total.saturating_sub(visible_rows);
-        let mut line_buf = [0u8; SCROLLBACK_LINE_LEN];
 
         for i in top..total {
-            if let Some(line) = console.scrollback.get_line(i, &mut line_buf) {
+            if let Some(len) = console.scrollback.get_line_with_attrs(i, &mut line_buf, &mut attr_buf) {
+                render_formatted_line(&line_buf[..len], &attr_buf[..len]);
                 uefi::system::with_stdout(|stdout| {
-                    let _ = stdout.write_str(line);
                     let _ = stdout.write_str("\r\n");
                 });
             } else {
@@ -343,12 +461,11 @@ pub fn draw_scroll_viewport(
         // Scrolled up into history
         let bottom = total.saturating_sub(offset);
         let top = bottom.saturating_sub(visible_rows);
-        let mut line_buf = [0u8; SCROLLBACK_LINE_LEN];
 
         for i in top..bottom {
-            if let Some(line) = console.scrollback.get_line(i, &mut line_buf) {
+            if let Some(len) = console.scrollback.get_line_with_attrs(i, &mut line_buf, &mut attr_buf) {
+                render_formatted_line(&line_buf[..len], &attr_buf[..len]);
                 uefi::system::with_stdout(|stdout| {
-                    let _ = stdout.write_str(line);
                     let _ = stdout.write_str("\r\n");
                 });
             } else {
@@ -365,10 +482,11 @@ pub fn draw_scroll_viewport(
         }
 
         // Status line on the bottom row
+        let display_top = if bottom == 0 { 0 } else { top + 1 };
         uefi::system::with_stdout(|stdout| {
             let _ = stdout.set_color(Color::Black, Color::Cyan);
             let mut num_buf = [0u8; 96];
-            let status = format_scroll_status(&mut num_buf, top + 1, bottom, total, offset);
+            let status = format_scroll_status(&mut num_buf, display_top, bottom, total, offset);
             let _ = stdout.write_str(status);
             let _ = stdout.set_color(Color::White, Color::Black);
         });

@@ -2039,8 +2039,9 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 <li><kbd>&darr;</kbd> (Down Arrow): Scrolls the terminal screen <strong>DOWN</strong> line-by-line toward the active command prompt.</li>
 <li><kbd>Page Up</kbd>: Scrolls up by an entire screen page (<code>rows - 2</code> lines).</li>
 <li><kbd>Page Down</kbd>: Scrolls down by an entire screen page.</li>
-<li>When scrolled up into history, a cyan status banner displays the visible line range: <code>-- SCROLL LOCK [UP/DOWN or PgUp/PgDn to scroll, ESC/Ctrl+S to exit] (lines X-Y of Z) --</code>.</li>
-<li>Allows naturally reviewing long command outputs (like <code>help</code>, <code>cat</code>, <code>ls -l</code>, <code>history</code>, or kernel boot diagnostics) that scrolled off the top of the screen.</li>
+<li><strong>Full Color &amp; Attribute Preservation</strong>: The scrollback buffer tracks both character bytes and formatting attributes (<code>(fg &amp; 0xF) | ((bg &amp; 0x7) &lt;&lt; 4)</code>). All syntax highlighting, prompt colors (<code>LightCyan</code>), section headers (<code>Yellow</code>), directory names (<code>Green</code>), and error messages (<code>LightRed</code>) are preserved verbatim when scrolling up and down.</li>
+<li>When scrolled up into history, a cyan status banner displays the visible line range: <code>-- SCROLL LOCK (up N lines, lines X-Y of Z) [UP/DOWN or PgUp/PgDn, ESC to exit] --</code>.</li>
+<li>Allows naturally reviewing long command outputs (like <code>help</code>, <code>cat</code>, <code>ls -l</code>, <code>history</code>, or kernel boot diagnostics) that scrolled off the top of the screen without losing any visual hierarchy.</li>
 </ul>
 </li>
 <li>

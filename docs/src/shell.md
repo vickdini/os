@@ -87,8 +87,9 @@ Hydra implements classic PC terminal scrolling using the **Scroll Lock** mode an
      - <kbd>&darr;</kbd> (Down Arrow): Scrolls the terminal screen **DOWN** line-by-line toward the active command prompt.
      - <kbd>Page Up</kbd>: Scrolls up by an entire screen page (`rows - 2` lines).
      - <kbd>Page Down</kbd>: Scrolls down by an entire screen page.
-   - When scrolled up into history, a cyan status banner displays the visible line range: `-- SCROLL LOCK [UP/DOWN or PgUp/PgDn to scroll, ESC/Ctrl+S to exit] (lines X-Y of Z) --`.
-   - Allows naturally reviewing long command outputs (like `help`, `cat`, `ls -l`, `history`, or kernel boot diagnostics) that scrolled off the top of the screen.
+   - **Full Color & Attribute Preservation**: The scrollback buffer tracks both character bytes and formatting attributes (`(fg & 0xF) | ((bg & 0x7) << 4)`). All syntax highlighting, prompt colors (`LightCyan`), section headers (`Yellow`), directory names (`Green`), and error messages (`LightRed`) are preserved verbatim when scrolling up and down.
+   - When scrolled up into history, a cyan status banner displays the visible line range: `-- SCROLL LOCK (up N lines, lines X-Y of Z) [UP/DOWN or PgUp/PgDn, ESC to exit] --`.
+   - Allows naturally reviewing long command outputs (like `help`, `cat`, `ls -l`, `history`, or kernel boot diagnostics) that scrolled off the top of the screen without losing any visual hierarchy.
 
 2. **When Scroll Lock is Inactive (Normal Mode)**:
    - <kbd>&uarr;</kbd> (Up Arrow) cycles backward through the command history ring buffer.
