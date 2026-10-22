@@ -69,11 +69,18 @@ pub struct Selectors {
 ## 4. API Reference & Methods
 
 ### `arch::gdt::init()`
-Loads the GDT into the CPU using the `lgdt` instruction, reloads the Code Segment (`CS`) and Data Segment (`DS`) registers, and loads the Task State Segment into the Task Register using the `ltr` instruction.
+Initializes and activates the hardware segmentation structures:
+1. **Disables interrupts** (`interrupts::disable()`) prior to swapping descriptor tables to ensure timer IRQs or external interrupts cannot trigger while segment registers hold transient or invalid selectors.
+2. **Loads the GDT** into the CPU via `lgdt`.
+3. **Reloads segment registers**:
+   - `CS::set_reg(kernel_code_selector)` sets the code segment.
+   - `DS`, `ES`, `SS` are reloaded with `kernel_data_selector`.
+   - `FS` and `GS` are loaded with `SegmentSelector::NULL`.
+4. **Loads the Task State Segment (TSS)** into the Task Register using `load_tss(tss_selector)`.
 
 ```rust
 arch::gdt::init();
 ```
 
 ### `arch::gdt::get_selectors() -> &'static Selectors`
-Provides access to the active segment selectors for subsequent userland process spawning and task switching.
+Provides access to the active segment selectors (`kernel_code_selector`, `kernel_data_selector`, `user_data_selector`, `user_code_selector`, `tss_selector`) for subsequent userland process spawning, context switches, and interrupt returns.

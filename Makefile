@@ -30,3 +30,7 @@ build: $(EFI_BIN)
 clean:
 	cargo clean
 	rm -rf $(DIST_DIR)
+
+docs-pdf:
+	python3 scripts/generate_docs_pdf.py || python scripts/generate_docs_pdf.py
+

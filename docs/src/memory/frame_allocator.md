@@ -89,9 +89,19 @@ Returns total allocated physical RAM in bytes.
 ### `PhysicalMemoryManager::free_memory(&self) -> u64`
 Returns currently unallocated physical RAM in bytes.
 
+### `x86_64::structures::paging::FrameAllocator<Size4KiB>` Trait Implementation
+```rust
+unsafe impl FrameAllocator<Size4KiB> for PhysicalMemoryManager {
+    fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
+        self.allocate_frame()
+    }
+}
+```
+Enables `PhysicalMemoryManager` to serve directly as the frame supplier for `x86_64` page table manipulators and memory allocators.
+
 ---
 
-## 5. UEFI Firmware Integration
+## 5. UEFI Firmware Integration & Low Memory Protection
 
 ```rust
 pub fn init_memory_from_uefi()
@@ -99,7 +109,8 @@ pub fn init_memory_from_uefi()
 Queries `uefi::boot::memory_map(MemoryType::LOADER_DATA)`:
 1. Iterates through all memory descriptors provided by the UEFI firmware.
 2. Filters specifically for `uefi::boot::MemoryType::CONVENTIONAL`.
-3. Registers each conventional block into the global `FRAME_ALLOCATOR` mutex.
+3. **Reserves the First 1 MiB (`0x100000`)**: Skips addresses below 1 MiB to protect legacy Real-Mode Interrupt Vector Tables (IVT), BIOS Data Areas (BDA), and to prevent `PhysAddr(0)` from being issued as a valid frame (protecting against null-pointer aliasing).
+4. Registers each usable conventional memory block into the global `FRAME_ALLOCATOR` mutex.
 
 ---
 

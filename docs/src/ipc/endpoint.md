@@ -56,6 +56,16 @@ pub struct Endpoint {
 - `tail`: Write pointer pointing to the next free slot for an incoming message.
 - `count`: Current number of queued, unread messages.
 
+### `EndpointState`
+Indicates the scheduling and readiness state of the communication channel:
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EndpointState {
+    Idle,
+    Active,
+}
+```
+
 ### `SharedEndpoint`
 A thread-safe wrapper around `Endpoint` using a `spin::Mutex`. This allows concurrent threads and interrupts to safely send and receive messages without race conditions.
 
@@ -82,6 +92,18 @@ Pulls the oldest message out of the queue (FIFO):
 
 ### `Endpoint::pending_count(&self) -> usize`
 Returns how many messages are waiting to be read.
+
+### `SharedEndpoint::new(id: u32) -> Self`
+Constructs a new mutex-protected endpoint.
+
+### `SharedEndpoint::send(&self, msg: Message) -> Result<(), &'static str>`
+Acquires the spinlock and sends a message into the underlying endpoint.
+
+### `SharedEndpoint::receive(&self) -> Option<Message>`
+Acquires the spinlock and consumes the next available message.
+
+### `SharedEndpoint::id(&self) -> u32`
+Returns the ID of the wrapped endpoint.
 
 ---
 

@@ -57,3 +57,15 @@ println!("[+] Operation Succeeded");
 
 ### `console::clear_screen()`
 Clears the active screen buffer and resets the cursor to the top-left coordinate `(0, 0)`.
+
+### `console::CONSOLE` and `_print`
+```rust
+pub static CONSOLE: Mutex<Console> = Mutex::new(Console);
+
+#[doc(hidden)]
+pub fn _print(args: fmt::Arguments) {
+    let mut console = CONSOLE.lock();
+    let _ = console.write_fmt(args);
+}
+```
+`CONSOLE` is a globally accessible, mutex-locked unit struct implementing `core::fmt::Write`. The `print!` and `println!` macros format arguments and invoke `_print`, acquiring the lock to safely serialize output to the UEFI `SimpleTextOutput` protocol.

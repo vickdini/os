@@ -43,12 +43,15 @@ Hydra is a bare-metal OS kernel built for the `x86_64-unknown-uefi` target. Unli
 │       └── kernel.iso        # El Torito bootable UEFI ISO
 ├── Cargo.toml                # Rust dependencies and package configuration
 ├── Makefile                  # Build and packaging automation
+├── generate_pdf.bat          # One-click documentation PDF generator
+├── scripts/
+│   └── generate_docs_pdf.py  # Script generating PDF ordered by boot sequence topic
 ├── development_environment_setup.sh  # Ubuntu/Debian environment setup script
 ├── qemu.bat                  # One-click Windows QEMU runner script
 └── README.md
 ```
 
-> **📖 Complete Documentation**: Detailed documentation for every source file with real-world analogies, conceptual explanations, diagrams, and API breakdowns is available in the [`docs/`](file:///d:/os/docs/README.md) directory.
+> **📖 Complete Documentation & PDF Manual**: Detailed documentation for every source file with real-world analogies, conceptual explanations, diagrams, and API breakdowns is available in the [`docs/`](file:///d:/os/docs/README.md) directory. You can generate a unified PDF ordered by boot sequence topic using `generate_pdf.bat` or `make docs-pdf`.
 
 ---
 

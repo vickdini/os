@@ -53,3 +53,60 @@ docs/
 | **IPC Root** | [`src/ipc/mod.rs`](file:///d:/os/src/ipc/mod.rs) | [docs/src/ipc/mod.md](file:///d:/os/docs/src/ipc/mod.md) | Inter-process communication module export. |
 | **Build Automation**| [`build.rs`](file:///d:/os/build.rs) | [docs/build.md](file:///d:/os/docs/build.md) | NASM assembly build script and link configuration. |
 | **Legacy Boot** | [`src/arch/x86_64/boot/`](file:///d:/os/src/arch/x86_64/boot) | [docs/src/arch/x86_64/boot.md](file:///d:/os/docs/src/arch/x86_64/boot.md) | Multiboot2 header and 32-bit to 64-bit assembly trampoline. |
+
+---
+
+## 🚀 Boot Sequence Chronological Topic Order
+
+When understanding or reviewing Hydra OS from initial hardware power-on through microkernel readiness, the documentation is structured sequentially:
+
+1. **Firmware Handoff & Bootstrapping**:
+   - [Legacy Boot Trampoline & Long Mode Switch](file:///d:/os/docs/src/arch/x86_64/boot.md) (Multiboot2 header, 32-bit to 64-bit Long Mode switch)
+   - [Build Automation & Assembly Pipeline](file:///d:/os/docs/build.md) (NASM toolchain and UEFI link settings)
+2. **UEFI Entry & Bootstrap Orchestration**:
+   - [Kernel Entry Point & Bootstrap Pipeline](file:///d:/os/docs/src/main.md) (UEFI `main()`, panic handler, subsystem coordination, halt loop)
+3. **Early Diagnostic Output**:
+   - [UEFI Console & Formatting](file:///d:/os/docs/src/console.md) (`print!`, `println!`, thread-safe `CONSOLE` spinlock, UEFI screen color formatting)
+4. **CPU Architecture & Hardware Isolation (Step 1 & 2)**:
+   - [Architecture Abstraction Layer](file:///d:/os/docs/src/arch/mod.md) (Hardware abstraction root)
+   - [Global Descriptor Table (GDT) & TSS](file:///d:/os/docs/src/arch/gdt.md) (Ring 0 / Ring 3 privilege levels, Task State Segment, Double Fault IST stack)
+   - [CPU Control Registers & Diagnostics](file:///d:/os/docs/src/arch/cpu.md) (CR0 protection, CR2 fault addresses, CR3 PML4 paging root, CR4 extensions)
+5. **Physical & Virtual Memory Management (Step 3 & 4)**:
+   - [Memory Subsystem Coordinator](file:///d:/os/docs/src/memory/mod.md) (Memory management root)
+   - [Physical Memory & Frame Allocator](file:///d:/os/docs/src/memory/frame_allocator.md) (UEFI memory map parsing, 1 MiB low memory reservation, 4 KiB frame allocator)
+   - [Virtual Memory & 4-Level Paging](file:///d:/os/docs/src/memory/paging.md) (x86_64 PML4 translation, 2 MiB / 1 GiB huge page decoding)
+6. **Capability Security Model (Step 5)**:
+   - [Capability Security Primitives](file:///d:/os/docs/src/capability/mod.md) (Security keycards, `Rights` bitflags, `CapType` kernel resource identifiers)
+   - [Task Capability Space & Table](file:///d:/os/docs/src/capability/table.md) (Per-task CSpace table, fixed 256-slot array storage, rights verification)
+7. **Inter-Process Communication (Step 6)**:
+   - [IPC Subsystem Root](file:///d:/os/docs/src/ipc/mod.md) (Microkernel message passing architecture)
+   - [IPC Fast Register Messages](file:///d:/os/docs/src/ipc/message.md) (4 fast inline register payload words, labels, transferred capability tokens)
+   - [IPC Endpoints & Mailbox Rendezvous](file:///d:/os/docs/src/ipc/endpoint.md) (Circular FIFO ring buffers, rendezvous channels, thread-safe `SharedEndpoint`)
+
+---
+
+## 📄 Generating the Unified Documentation PDF
+
+You can generate a single, professional PDF manual containing all documentation files, automatically formatted and ordered by the boot sequence topics:
+
+### Windows:
+```cmd
+generate_pdf.bat
+```
+or
+```powershell
+python scripts\generate_docs_pdf.py
+```
+
+### Linux / WSL / macOS:
+```bash
+make docs-pdf
+```
+or
+```bash
+python3 scripts/generate_docs_pdf.py
+```
+
+The compiled PDF is generated at [`docs/Hydra_OS_Documentation.pdf`](file:///d:/os/docs/Hydra_OS_Documentation.pdf) and mirrored to [`dist/Hydra_OS_Documentation.pdf`](file:///d:/os/dist/Hydra_OS_Documentation.pdf).
+An HTML version suitable for browser inspection or custom printing is also created at [`docs/Hydra_OS_Documentation.html`](file:///d:/os/docs/Hydra_OS_Documentation.html).
+
