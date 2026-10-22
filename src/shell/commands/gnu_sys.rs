@@ -156,8 +156,13 @@ impl Command for SleepCommand {
             }
         };
 
-        // Sleep in 100ms increments to yield cleanly to firmware
+        // Sleep in 100ms increments to yield cleanly to firmware and check for Ctrl+C
         for _ in 0..(secs * 10) {
+            if crate::console::check_interrupt() {
+                println!("^C");
+                _state.last_status = 130;
+                return;
+            }
             uefi::boot::stall(Duration::from_millis(100));
         }
     }
@@ -208,6 +213,11 @@ impl Command for SeqCommand {
         let mut curr = first;
         while curr <= last {
             println!("{}", curr);
+            if crate::console::check_interrupt() {
+                println!("^C");
+                _state.last_status = 130;
+                break;
+            }
             curr = curr.saturating_add(step);
             if curr == 0 { break; } // Overflow guard
         }
@@ -223,7 +233,7 @@ impl Command for YesCommand {
     }
 
     fn description(&self) -> &'static str {
-        "Output a string repeatedly (safely outputs 25 lines in console)"
+        "Output a string repeatedly until interrupted with Ctrl+C"
     }
 
     fn usage(&self) -> &'static str {
@@ -234,12 +244,16 @@ impl Command for YesCommand {
         let msg = if args.is_empty() { "y" } else { args[0] };
         set_color(Color::White, Color::Black);
 
-        // Print 25 iterations to avoid freezing console without signal interrupt
-        for _ in 0..25 {
+        loop {
             println!("{}", msg);
+            if crate::console::check_interrupt() {
+                println!("^C");
+                _state.last_status = 130;
+                break;
+            }
+            // Yield 10ms to avoid freezing firmware timer/event queue
+            uefi::boot::stall(Duration::from_millis(10));
         }
-        set_color(Color::DarkGray, Color::Black);
-        println!("(yes: limited to 25 repetitions for interactive console safety)");
     }
 }
 

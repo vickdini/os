@@ -6,11 +6,13 @@ pub mod gnu_fs;
 pub mod gnu_sys;
 pub mod gnu_text;
 pub mod help;
+pub mod history_cmd;
 pub mod info;
 pub mod ipc;
 pub mod mem;
 pub mod misc;
 pub mod power;
+pub mod script;
 pub mod status;
 pub mod time;
 pub mod translate;
@@ -33,11 +35,13 @@ pub use gnu_text::{
     BasenameCommand, DirnameCommand, GrepCommand, HeadCommand, TailCommand, WcCommand,
 };
 pub use help::HelpCommand;
+pub use history_cmd::HistoryCommand;
 pub use info::InfoCommand;
 pub use ipc::IpcCommand;
 pub use mem::{AllocCommand, MemCommand};
 pub use misc::{ClearCommand, ColorCommand, EchoCommand, PanicCommand};
 pub use power::{HaltCommand, RebootCommand, ShutdownCommand};
+pub use script::ShCommand;
 pub use status::StatusCommand;
 pub use time::TimeCommand;
 pub use translate::TranslateCommand;
@@ -50,9 +54,12 @@ pub static COMMANDS: &[&dyn Command] = &[
     &HelpCommand,
     &InfoCommand,
     &StatusCommand,
+    &HistoryCommand,
     &ClearCommand,
     &ColorCommand,
     &EchoCommand,
+    // Script Runner (Bash/POSIX)
+    &ShCommand,
     // GNU Coreutils - Filesystem
     &PwdCommand,
     &CdCommand,

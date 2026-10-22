@@ -78,6 +78,10 @@ impl ZfsServer {
                 "calc.efi",
                 b"MZ\x90\x00Hydra Calculator Utility\n",
             ),
+            (
+                "demo.sh",
+                b"#!/bin/sh\n# Hydra OS Shell Automation Script\necho === Running demo.sh ===\nuname -a\npwd\necho Listing files in /bin:\nls\necho OpenZFS pool status:\ndf -h\necho === Finished demo.sh ===\n",
+            ),
         ];
 
         for &(name, content) in sample_files {

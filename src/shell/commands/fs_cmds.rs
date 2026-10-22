@@ -144,7 +144,14 @@ impl Command for CatCommand {
             Ok(n) => {
                 set_color(Color::White, Color::Black);
                 if let Ok(text) = core::str::from_utf8(&buf[..n]) {
-                    println!("{}", text);
+                    for line in text.lines() {
+                        if crate::console::check_interrupt() {
+                            println!("^C");
+                            state.last_status = 130;
+                            return;
+                        }
+                        println!("{}", line);
+                    }
                 } else {
                     println!("[Binary data: {} bytes, Fletcher-4 checksum verified]", n);
                 }

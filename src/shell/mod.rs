@@ -1,12 +1,14 @@
 pub mod command;
 pub mod commands;
+pub mod editor;
 pub mod fs;
+pub mod history;
 pub mod state;
 
 use core::str;
 use uefi::proto::console::text::Color;
 
-use crate::console::{read_line, set_color};
+use crate::console::set_color;
 pub use command::Command;
 pub use state::ShellState;
 
@@ -22,10 +24,45 @@ pub fn print_welcome_banner() {
 }
 
 pub fn execute_command(cmd_line: &str, state: &mut ShellState) {
+    let trimmed = cmd_line.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    // Support '!!' to repeat the last command (Bash / Zsh style)
+    if trimmed == "!!" {
+        let mut target_cmd = None;
+        for i in 0..state.history.len() {
+            if let Some(cmd) = state.history.get_from_latest(i) {
+                if cmd != "!!" {
+                    target_cmd = Some(cmd);
+                    break;
+                }
+            }
+        }
+
+        if let Some(prev) = target_cmd {
+            set_color(Color::LightCyan, Color::Black);
+            println!("{}", prev);
+            let mut copy_buf = [0u8; 128];
+            let len = prev.len().min(copy_buf.len());
+            copy_buf[..len].copy_from_slice(&prev.as_bytes()[..len]);
+            if let Ok(prev_str) = core::str::from_utf8(&copy_buf[..len]) {
+                execute_command(prev_str, state);
+            }
+            return;
+        } else {
+            set_color(Color::LightRed, Color::Black);
+            println!("!!: event not found");
+            state.last_status = 1;
+            return;
+        }
+    }
+
     let mut args_buf = [""; MAX_ARGS];
     let mut arg_count = 0;
 
-    for word in cmd_line.split_whitespace() {
+    for word in trimmed.split_whitespace() {
         if arg_count < MAX_ARGS {
             args_buf[arg_count] = word;
             arg_count += 1;
@@ -43,9 +80,16 @@ pub fn execute_command(cmd_line: &str, state: &mut ShellState) {
         cmd.execute(args, state);
     } else if fs::search_and_execute(command_name, args, state) {
         // Successfully found and executed external program via $PATH
+        state.last_status = 0;
+    } else if command_name.starts_with("./") || command_name.ends_with(".sh") {
+        // Direct execution of scripts (e.g. "./demo.sh" or "demo.sh")
+        if let Some(sh_cmd) = commands::find_command("sh") {
+            sh_cmd.execute(&args_buf[..arg_count], state);
+        }
     } else {
         set_color(Color::LightRed, Color::Black);
         println!("Unknown command: '{}'. Type 'help' for built-ins or 'path' for executable search dirs.", command_name);
+        state.last_status = 127;
     }
 }
 
@@ -59,7 +103,19 @@ pub fn run() -> ! {
         set_color(state.prompt_color, Color::Black);
         let mut prompt_buf = [0u8; 96];
         let prompt_str = state.format_prompt(&mut prompt_buf);
-        let len = read_line(prompt_str, &mut line_buf);
+        let len = match editor::read_line(prompt_str, &mut line_buf, &mut state) {
+            Some(l) => l,
+            None => {
+                set_color(Color::LightCyan, Color::Black);
+                println!("logout");
+                if let Some(cmd) = commands::find_command("shutdown") {
+                    cmd.execute(&[], &mut state);
+                }
+                loop {
+                    uefi::boot::stall(core::time::Duration::from_millis(500));
+                }
+            }
+        };
         set_color(Color::White, Color::Black);
 
         if len == 0 {

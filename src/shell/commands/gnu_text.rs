@@ -74,6 +74,11 @@ impl Command for HeadCommand {
                     let text = core::str::from_utf8(&buf[..bytes_read]).unwrap_or("");
                     let mut lines_printed = 0;
                     for line in text.lines() {
+                        if crate::console::check_interrupt() {
+                            println!("^C");
+                            state.last_status = 130;
+                            return;
+                        }
                         if lines_printed >= max_lines {
                             break;
                         }
@@ -161,6 +166,11 @@ impl Command for TailCommand {
                     let skip_lines = total_lines.saturating_sub(max_lines);
 
                     for line in text.lines().skip(skip_lines) {
+                        if crate::console::check_interrupt() {
+                            println!("^C");
+                            state.last_status = 130;
+                            return;
+                        }
                         println!("{}", line);
                     }
                 }
@@ -351,6 +361,11 @@ impl Command for GrepCommand {
                     let mut match_count = 0;
 
                     for (line_idx, line) in text.lines().enumerate() {
+                        if crate::console::check_interrupt() {
+                            println!("^C");
+                            state.last_status = 130;
+                            return;
+                        }
                         let is_match = if ignore_case {
                             line_contains_case_insensitive(line, pattern)
                         } else {

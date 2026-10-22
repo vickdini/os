@@ -54,6 +54,18 @@ pub fn read_key() -> Option<Key> {
     })
 }
 
+/// Checks non-blockingly whether Ctrl+C (ASCII 3) or Ctrl+\ (ASCII 28) was pressed to interrupt execution.
+pub fn check_interrupt() -> bool {
+    if let Some(key) = read_key() {
+        match key {
+            Key::Printable(ch) if u16::from(ch) == 3 || u16::from(ch) == 28 => true,
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
 /// Waits until a key is pressed from UEFI stdin.
 pub fn get_key() -> Key {
     loop {
@@ -85,8 +97,14 @@ pub fn read_line(prompt: &str, buf: &mut [u8]) -> usize {
         let key = get_key();
         match key {
             Key::Printable(ch) => {
+                let code = u16::from(ch);
                 let c = char::from(ch);
-                if c == '\r' || c == '\n' {
+                if code == 3 {
+                    // Ctrl+C
+                    crate::println!("^C");
+                    crate::print!("{}", prompt);
+                    len = 0;
+                } else if c == '\r' || c == '\n' {
                     crate::println!();
                     break;
                 } else if c == '\x08' || u16::from(ch) == 8 {
@@ -107,6 +125,12 @@ pub fn read_line(prompt: &str, buf: &mut [u8]) -> usize {
                     backspace();
                 }
             }
+            Key::Special(ScanCode::UP) => {}
+            Key::Special(ScanCode::DOWN) => {}
+            Key::Special(ScanCode::LEFT) => {}
+            Key::Special(ScanCode::RIGHT) => {}
+            Key::Special(ScanCode::HOME) => {}
+            Key::Special(ScanCode::END) => {}
             _ => {}
         }
     }

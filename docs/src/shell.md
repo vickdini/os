@@ -14,14 +14,18 @@ The shell is architected as a modular, extensible command registry where every c
 ```
 src/shell/
 ├── mod.rs                  # REPL loop, banner, prompt formatting, and command dispatcher
-├── state.rs                # ShellState (CSpace, IPC endpoint, prompt color, cwd)
+├── state.rs                # ShellState (CSpace, IPC endpoint, prompt color, cwd, history)
 ├── command.rs              # The `Command` trait and argument parsing helpers
+├── editor.rs               # Interactive line editor (history cycling, tab completion, arrow keys)
+├── history.rs              # Command history ring buffer (32 entries)
 └── commands/               # Modular Command Implementations
     ├── mod.rs              # Static command registry (`COMMANDS`)
     ├── gnu_fs.rs           # GNU Filesystem utils (`pwd`, `cd`, `mkdir`, `rmdir`, `rm`, `cp`, `mv`, `touch`, `stat`, `df`, `du`)
     ├── gnu_text.rs         # GNU Text inspection (`head`, `tail`, `wc`, `grep`, `basename`, `dirname`)
     ├── gnu_sys.rs          # GNU System & scripting (`uname`, `whoami`, `sleep`, `seq`, `yes`, `true`, `false`)
     ├── fs_cmds.rs          # File operations (`ls`, `cat`, `write`)
+    ├── history_cmd.rs      # Session history viewer (`history`)
+    ├── script.rs           # Bash / POSIX script runner (`sh`, `source`, `.`)
     ├── help.rs             # Help command & usage manual generator
     ├── info.rs             # OS version & architecture overview (`info`, `version`)
     ├── status.rs           # Subsystem health inspection
@@ -36,6 +40,42 @@ src/shell/
     ├── efifs.rs            # Low-level UEFI FAT boot volume diagnostics (`efifs`)
     └── misc.rs             # Utilities (`color`, `echo`, `clear`, `panic`)
 ```
+
+### Zsh-Style Interactive Line Editor & History
+The shell includes an interactive line editor (`editor.rs`):
+- **Up / Down Arrow History Navigation**: Traverses the command history buffer (`history.rs`). Pressing <kbd>&uarr;</kbd> recalls previously entered commands, while <kbd>&darr;</kbd> cycles forward or restores the typed draft line.
+- **Tab Auto-Completion (Zsh Style)**: Pressing <kbd>Tab</kbd> auto-completes built-in command names, aliases, and filesystem paths in the current directory. When multiple matches exist, a color-coded column listing is displayed, and the prompt and current editing line are cleanly reprinted.
+- **In-Line Cursor Navigation**: <kbd>&larr;</kbd> and <kbd>&rarr;</kbd> move the cursor anywhere within the line; <kbd>Home</kbd> jumps to the start, <kbd>End</kbd> jumps to the end.
+- **In-Line Editing**: Character insertion, <kbd>Backspace</kbd>, and <kbd>Delete</kbd> work anywhere in the line with automatic redraw.
+- **History Expansion `!!`**: Typing `!!` echoes and immediately re-executes the most recent command.
+
+### Standard Terminal Key Combinations
+
+The interactive line editor and execution runtime implement standard POSIX / Readline / Zsh control key bindings:
+
+| Key Combination | Action / Function | Behavior |
+| :--- | :--- | :--- |
+| <kbd>Ctrl+C</kbd> | **Interrupt / Cancel** | While editing: cancels current input, prints `^C`, and restarts prompt on a new line.<br>While running a program (`yes`, `sleep`, `seq`, `sh`, `cat`, `grep`, `head`, `tail`): halts execution immediately with status `130`. |
+| <kbd>Ctrl+D</kbd> | **EOF / Forward Delete** | If the line buffer is empty: signals EOF (`logout` / clean shutdown).<br>If the line is non-empty: deletes character under cursor (same as <kbd>Delete</kbd>). |
+| <kbd>Ctrl+L</kbd> | **Clear Screen** | Clears the UEFI display and redraws the shell prompt and current line buffer at row 0. |
+| <kbd>Ctrl+A</kbd> | **Line Start** | Jumps cursor to the beginning of the line (equivalent to <kbd>Home</kbd>). |
+| <kbd>Ctrl+E</kbd> | **Line End** | Jumps cursor to the end of the line (equivalent to <kbd>End</kbd>). |
+| <kbd>Ctrl+U</kbd> | **Kill Line Before** | Deletes all text from the start of the line up to the cursor. |
+| <kbd>Ctrl+K</kbd> | **Kill Line After** | Deletes all text from the cursor to the end of the line. |
+| <kbd>Ctrl+W</kbd> | **Kill Word Backward** | Erases the previous whitespace-delimited word before the cursor. |
+| <kbd>Ctrl+P</kbd> | **Previous History** | Cycles backward in command history (equivalent to <kbd>&uarr;</kbd>). |
+| <kbd>Ctrl+N</kbd> | **Next History** | Cycles forward in command history (equivalent to <kbd>&darr;</kbd>). |
+| <kbd>Ctrl+B</kbd> | **Move Backward** | Moves cursor left by one character (equivalent to <kbd>&larr;</kbd>). |
+| <kbd>Ctrl+F</kbd> | **Move Forward** | Moves cursor right by one character (equivalent to <kbd>&rarr;</kbd>). |
+| <kbd>Ctrl+H</kbd> | **Backspace** | Deletes character to the left of the cursor. |
+| <kbd>Ctrl+Z</kbd> | **Suspend** | Displays `^Z` notification. |
+
+### Shell Script Runner (Bash Compatible)
+The shell provides a built-in script interpreter (`sh`, `source`, `.`) capable of executing `.sh` files stored in ZFS or EFI boot volumes:
+- Supports `#` comment lines and shebangs (`#!/bin/sh`, `#!/bin/bash`).
+- Supports command chaining with `;` (e.g. `mkdir /tmp/test; cd /tmp/test; touch a.txt; ls`).
+- Supports script arguments (`$1`, `$2`, `$0`) and last exit status (`$?`).
+- Pre-loaded with `/bin/demo.sh` demonstrating automated multi-command execution.
 
 ### Dynamic Working Directory Prompt
 The shell tracks the current working directory dynamically in `ShellState` (initialized to `/bin`), displaying a standard Unix prompt:
@@ -86,7 +126,9 @@ hydra:/bin>
 | `whoami`, `id` | `whoami` | Prints current user identity and capabilities. | `-u`, `-g`, `-a` (full capability context) |
 | `sleep` | `sleep <secs>` | Delays execution for specified duration (up to 60s). | Non-blocking firmware stall |
 | `seq` | `seq [FIRST [INC]] LAST`| Prints sequences of integers. | Customizable start, step, and end |
-| `yes` | `yes [string]` | Outputs string repeatedly (25 safe lines in console). | Default string: `y` |
+| `history`, `hist`| `history` | Displays numbered session command history list. | Up/down arrow key cycling |
+| `sh`, `source`, `.` | `sh <script.sh>` | Executes Bash-compatible script files line by line. | `#` comments, `;` chaining, `$1..$9`, `$?` |
+| `!!` | `!!` | Repeats and re-executes the last command. | Shell history expansion |
 | `true` | `true` | Returns success status (exit status 0). | |
 | `false` | `false` | Returns failure status (exit status 1). | |
 

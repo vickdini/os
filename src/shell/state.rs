@@ -4,6 +4,7 @@ use crate::arch;
 use crate::capability::table::CapabilityTable;
 use crate::capability::{CapType, Capability, Rights};
 use crate::ipc::Endpoint;
+use crate::shell::history::History;
 
 pub struct ShellState {
     pub cap_table: CapabilityTable,
@@ -11,6 +12,8 @@ pub struct ShellState {
     pub prompt_color: Color,
     pub cwd: [u8; 64],
     pub cwd_len: usize,
+    pub history: History,
+    pub last_status: i32,
 }
 
 impl ShellState {
@@ -40,6 +43,8 @@ impl ShellState {
             prompt_color: Color::LightCyan,
             cwd,
             cwd_len: default_cwd.len(),
+            history: History::new(),
+            last_status: 0,
         }
     }
 

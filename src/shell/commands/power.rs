@@ -13,7 +13,7 @@ impl Command for ShutdownCommand {
     }
 
     fn aliases(&self) -> &'static [&'static str] {
-        &["poweroff"]
+        &["poweroff", "exit", "logout"]
     }
 
     fn description(&self) -> &'static str {

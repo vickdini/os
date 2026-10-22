@@ -1905,14 +1905,18 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 <p>The shell is architected as a modular, extensible command registry where every command or tool lives in its own dedicated source file:</p>
 <div class="codehilite"><pre><span></span><code><span class="n">src</span><span class="o">/</span><span class="n">shell</span><span class="o">/</span>
 <span class="n">├──</span><span class="w"> </span><span class="k">mod</span><span class="p">.</span><span class="n">rs</span><span class="w">                  </span><span class="c1"># REPL loop, banner, prompt formatting, and command dispatcher</span>
-<span class="n">├──</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">rs</span><span class="w">                </span><span class="c1"># ShellState (CSpace, IPC endpoint, prompt color, cwd)</span>
+<span class="n">├──</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">rs</span><span class="w">                </span><span class="c1"># ShellState (CSpace, IPC endpoint, prompt color, cwd, history)</span>
 <span class="n">├──</span><span class="w"> </span><span class="n">command</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># The `Command` trait and argument parsing helpers</span>
+<span class="n">├──</span><span class="w"> </span><span class="n">editor</span><span class="p">.</span><span class="n">rs</span><span class="w">               </span><span class="c1"># Interactive line editor (history cycling, tab completion, arrow keys)</span>
+<span class="n">├──</span><span class="w"> </span><span class="k">history</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># Command history ring buffer (32 entries)</span>
 <span class="n">└──</span><span class="w"> </span><span class="n">commands</span><span class="o">/</span><span class="w">               </span><span class="c1"># Modular Command Implementations</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">mod</span><span class="p">.</span><span class="n">rs</span><span class="w">              </span><span class="c1"># Static command registry (`COMMANDS`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">gnu_fs</span><span class="p">.</span><span class="n">rs</span><span class="w">           </span><span class="c1"># GNU Filesystem utils (`pwd`, `cd`, `mkdir`, `rmdir`, `rm`, `cp`, `mv`, `touch`, `stat`, `df`, `du`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">gnu_text</span><span class="p">.</span><span class="n">rs</span><span class="w">         </span><span class="c1"># GNU Text inspection (`head`, `tail`, `wc`, `grep`, `basename`, `dirname`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">gnu_sys</span><span class="p">.</span><span class="n">rs</span><span class="w">          </span><span class="c1"># GNU System &amp; scripting (`uname`, `whoami`, `sleep`, `seq`, `yes`, `true`, `false`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">fs_cmds</span><span class="p">.</span><span class="n">rs</span><span class="w">          </span><span class="c1"># File operations (`ls`, `cat`, `write`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">history_cmd</span><span class="p">.</span><span class="n">rs</span><span class="w">      </span><span class="c1"># Session history viewer (`history`)</span>
+<span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">script</span><span class="p">.</span><span class="n">rs</span><span class="w">           </span><span class="c1"># Bash / POSIX script runner (`sh`, `source`, `.`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">help</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># Help command &amp; usage manual generator</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="n">info</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># OS version &amp; architecture overview (`info`, `version`)</span>
 <span class="w">    </span><span class="n">├──</span><span class="w"> </span><span class="k">status</span><span class="p">.</span><span class="n">rs</span><span class="w">           </span><span class="c1"># Subsystem health inspection</span>
@@ -1928,6 +1932,102 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 <span class="w">    </span><span class="n">└──</span><span class="w"> </span><span class="n">misc</span><span class="p">.</span><span class="n">rs</span><span class="w">             </span><span class="c1"># Utilities (`color`, `echo`, `clear`, `panic`)</span>
 </code></pre></div>
 
+<h3>Zsh-Style Interactive Line Editor &amp; History</h3>
+<p>The shell includes an interactive line editor (<code>editor.rs</code>):
+- <strong>Up / Down Arrow History Navigation</strong>: Traverses the command history buffer (<code>history.rs</code>). Pressing <kbd>&uarr;</kbd> recalls previously entered commands, while <kbd>&darr;</kbd> cycles forward or restores the typed draft line.
+- <strong>Tab Auto-Completion (Zsh Style)</strong>: Pressing <kbd>Tab</kbd> auto-completes built-in command names, aliases, and filesystem paths in the current directory. When multiple matches exist, a color-coded column listing is displayed, and the prompt and current editing line are cleanly reprinted.
+- <strong>In-Line Cursor Navigation</strong>: <kbd>&larr;</kbd> and <kbd>&rarr;</kbd> move the cursor anywhere within the line; <kbd>Home</kbd> jumps to the start, <kbd>End</kbd> jumps to the end.
+- <strong>In-Line Editing</strong>: Character insertion, <kbd>Backspace</kbd>, and <kbd>Delete</kbd> work anywhere in the line with automatic redraw.
+- <strong>History Expansion <code>!!</code></strong>: Typing <code>!!</code> echoes and immediately re-executes the most recent command.</p>
+<h3>Standard Terminal Key Combinations</h3>
+<p>The interactive line editor and execution runtime implement standard POSIX / Readline / Zsh control key bindings:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Key Combination</th>
+<th style="text-align: left;">Action / Function</th>
+<th style="text-align: left;">Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+C</kbd></td>
+<td style="text-align: left;"><strong>Interrupt / Cancel</strong></td>
+<td style="text-align: left;">While editing: cancels current input, prints <code>^C</code>, and restarts prompt on a new line.<br>While running a program (<code>yes</code>, <code>sleep</code>, <code>seq</code>, <code>sh</code>, <code>cat</code>, <code>grep</code>, <code>head</code>, <code>tail</code>): halts execution immediately with status <code>130</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+D</kbd></td>
+<td style="text-align: left;"><strong>EOF / Forward Delete</strong></td>
+<td style="text-align: left;">If the line buffer is empty: signals EOF (<code>logout</code> / clean shutdown).<br>If the line is non-empty: deletes character under cursor (same as <kbd>Delete</kbd>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+L</kbd></td>
+<td style="text-align: left;"><strong>Clear Screen</strong></td>
+<td style="text-align: left;">Clears the UEFI display and redraws the shell prompt and current line buffer at row 0.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+A</kbd></td>
+<td style="text-align: left;"><strong>Line Start</strong></td>
+<td style="text-align: left;">Jumps cursor to the beginning of the line (equivalent to <kbd>Home</kbd>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+E</kbd></td>
+<td style="text-align: left;"><strong>Line End</strong></td>
+<td style="text-align: left;">Jumps cursor to the end of the line (equivalent to <kbd>End</kbd>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+U</kbd></td>
+<td style="text-align: left;"><strong>Kill Line Before</strong></td>
+<td style="text-align: left;">Deletes all text from the start of the line up to the cursor.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+K</kbd></td>
+<td style="text-align: left;"><strong>Kill Line After</strong></td>
+<td style="text-align: left;">Deletes all text from the cursor to the end of the line.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+W</kbd></td>
+<td style="text-align: left;"><strong>Kill Word Backward</strong></td>
+<td style="text-align: left;">Erases the previous whitespace-delimited word before the cursor.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+P</kbd></td>
+<td style="text-align: left;"><strong>Previous History</strong></td>
+<td style="text-align: left;">Cycles backward in command history (equivalent to <kbd>&uarr;</kbd>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+N</kbd></td>
+<td style="text-align: left;"><strong>Next History</strong></td>
+<td style="text-align: left;">Cycles forward in command history (equivalent to <kbd>&darr;</kbd>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+B</kbd></td>
+<td style="text-align: left;"><strong>Move Backward</strong></td>
+<td style="text-align: left;">Moves cursor left by one character (equivalent to <kbd>&larr;</kbd>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+F</kbd></td>
+<td style="text-align: left;"><strong>Move Forward</strong></td>
+<td style="text-align: left;">Moves cursor right by one character (equivalent to <kbd>&rarr;</kbd>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+H</kbd></td>
+<td style="text-align: left;"><strong>Backspace</strong></td>
+<td style="text-align: left;">Deletes character to the left of the cursor.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><kbd>Ctrl+Z</kbd></td>
+<td style="text-align: left;"><strong>Suspend</strong></td>
+<td style="text-align: left;">Displays <code>^Z</code> notification.</td>
+</tr>
+</tbody>
+</table>
+<h3>Shell Script Runner (Bash Compatible)</h3>
+<p>The shell provides a built-in script interpreter (<code>sh</code>, <code>source</code>, <code>.</code>) capable of executing <code>.sh</code> files stored in ZFS or EFI boot volumes:
+- Supports <code>#</code> comment lines and shebangs (<code>#!/bin/sh</code>, <code>#!/bin/bash</code>).
+- Supports command chaining with <code>;</code> (e.g. <code>mkdir /tmp/test; cd /tmp/test; touch a.txt; ls</code>).
+- Supports script arguments (<code>$1</code>, <code>$2</code>, <code>$0</code>) and last exit status (<code>$?</code>).
+- Pre-loaded with <code>/bin/demo.sh</code> demonstrating automated multi-command execution.</p>
 <h3>Dynamic Working Directory Prompt</h3>
 <p>The shell tracks the current working directory dynamically in <code>ShellState</code> (initialized to <code>/bin</code>), displaying a standard Unix prompt:</p>
 <div class="codehilite"><pre><span></span><code>hydra:/bin&gt; pwd
@@ -2102,10 +2202,22 @@ hydra:/bin&gt;
 <td style="text-align: left;">Customizable start, step, and end</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>yes</code></td>
-<td style="text-align: left;"><code>yes [string]</code></td>
-<td style="text-align: left;">Outputs string repeatedly (25 safe lines in console).</td>
-<td style="text-align: left;">Default string: <code>y</code></td>
+<td style="text-align: left;"><code>history</code>, <code>hist</code></td>
+<td style="text-align: left;"><code>history</code></td>
+<td style="text-align: left;">Displays numbered session command history list.</td>
+<td style="text-align: left;">Up/down arrow key cycling</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sh</code>, <code>source</code>, <code>.</code></td>
+<td style="text-align: left;"><code>sh &lt;script.sh&gt;</code></td>
+<td style="text-align: left;">Executes Bash-compatible script files line by line.</td>
+<td style="text-align: left;"><code>#</code> comments, <code>;</code> chaining, <code>$1..$9</code>, <code>$?</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>!!</code></td>
+<td style="text-align: left;"><code>!!</code></td>
+<td style="text-align: left;">Repeats and re-executes the last command.</td>
+<td style="text-align: left;">Shell history expansion</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>true</code></td>
