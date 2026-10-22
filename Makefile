@@ -14,15 +14,19 @@ $(EFI_BIN):
 build: $(EFI_BIN)
 	mkdir -p $(DIST_DIR)
 	cp $(EFI_BIN) $(DIST_DIR)/bootx64.efi
-	# Create FAT EFI disk image
-	dd if=/dev/zero of=$(IMG) bs=1M count=4
+	# Create FAT EFI disk image (16MB)
+	dd if=/dev/zero of=$(IMG) bs=1M count=16
 	mkfs.vfat $(IMG)
-	mmd -i $(IMG) ::/EFI ::/EFI/BOOT
+	mmd -i $(IMG) ::/EFI ::/EFI/BOOT ::/bin ::/apps
 	mcopy -i $(IMG) $(DIST_DIR)/bootx64.efi ::/EFI/BOOT/BOOTX64.EFI
+	mcopy -i $(IMG) esp/readme.txt ::/README.TXT
+	mcopy -i $(IMG) esp/bin/readme.txt ::/bin/README.TXT
 	# Create bootable UEFI ISO with El Torito EFI boot catalog
 	rm -rf $(DIST_DIR)/iso_root
-	mkdir -p $(DIST_DIR)/iso_root/EFI/BOOT
+	mkdir -p $(DIST_DIR)/iso_root/EFI/BOOT $(DIST_DIR)/iso_root/bin $(DIST_DIR)/iso_root/apps
 	cp $(DIST_DIR)/bootx64.efi $(DIST_DIR)/iso_root/EFI/BOOT/BOOTX64.EFI
+	cp esp/readme.txt $(DIST_DIR)/iso_root/README.TXT
+	cp esp/bin/readme.txt $(DIST_DIR)/iso_root/bin/README.TXT
 	cp $(IMG) $(DIST_DIR)/iso_root/efiboot.img
 	xorriso -as mkisofs -V "HYDRA" -e efiboot.img -no-emul-boot -isohybrid-gpt-basdat -o $(ISO) $(DIST_DIR)/iso_root
 	rm -rf $(DIST_DIR)/iso_root

@@ -431,8 +431,10 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <li class="toc-item"><a href="#doc-boot-stage7-ipc-mod" class="toc-link"><span class="toc-title">Inter-Process Communication Overview</span><span class="toc-sub">Microkernel message passing coordinating isolated userland services.</span></a></li>
 <li class="toc-item"><a href="#doc-boot-stage7-ipc-msg" class="toc-link"><span class="toc-title">Fast Register Messages & Delegation</span><span class="toc-sub">Fast 4-word inline register payload, protocol labels, and transferred capability tokens.</span></a></li>
 <li class="toc-item"><a href="#doc-boot-stage7-ipc-ep" class="toc-link"><span class="toc-title">Rendezvous Channels & Endpoints</span><span class="toc-sub">Circular FIFO ring buffers, rendezvous mailboxes, and thread-safe SharedEndpoint.</span></a></li>
-<li class="toc-stage-header">Stage 8: Interactive Shell</li>
-<li class="toc-item"><a href="#doc-boot-stage8-shell" class="toc-link"><span class="toc-title">Interactive Microkernel Shell & Command REPL</span><span class="toc-sub">Command REPL, real-time memory/CPU inspection, CSpace manipulation, and IPC testing.</span></a></li>
+<li class="toc-stage-header">Stage 8: File Server & Storage</li>
+<li class="toc-item"><a href="#doc-boot-stage8-zfs" class="toc-link"><span class="toc-title">ZFS Microkernel File Server Architecture</span><span class="toc-sub">Microkernel ZFS File Server (Endpoint 0x20), CoW Merkle tree, Fletcher-4 checksums, and datasets.</span></a></li>
+<li class="toc-stage-header">Stage 9: Interactive Shell</li>
+<li class="toc-item"><a href="#doc-boot-stage9-shell" class="toc-link"><span class="toc-title">Interactive Microkernel Shell & Command REPL</span><span class="toc-sub">Command REPL, real-time memory/CPU inspection, CSpace manipulation, ZFS commands, and IPC testing.</span></a></li>
     </ul>
 </div>
 
@@ -497,7 +499,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <tr>
 <td style="text-align: left;"><strong>Interactive Shell</strong></td>
 <td style="text-align: left;"><a href="file:///d:/os/src/shell.rs"><code>src/shell.rs</code></a></td>
-<td style="text-align: left;"><a href="#doc-boot-stage8-shell">docs/src/shell.md</a></td>
+<td style="text-align: left;"><a href="#doc-boot-stage9-shell">docs/src/shell.md</a></td>
 <td style="text-align: left;">Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing.</td>
 </tr>
 <tr>
@@ -607,7 +609,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
    - <a href="#doc-boot-stage7-ipc-msg">IPC Fast Register Messages</a> (4 fast inline register payload words, labels, transferred capability tokens)
    - <a href="#doc-boot-stage7-ipc-ep">IPC Endpoints &amp; Mailbox Rendezvous</a> (Circular FIFO ring buffers, rendezvous channels, thread-safe <code>SharedEndpoint</code>)</li>
 <li><strong>Interactive User Space &amp; Subsystem Diagnostics</strong>:
-   - <a href="#doc-boot-stage8-shell">Interactive Microkernel Shell</a> (Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing, RTC clock, reboot/shutdown)</li>
+   - <a href="#doc-boot-stage9-shell">Interactive Microkernel Shell</a> (Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing, RTC clock, reboot/shutdown)</li>
 </ol>
 <hr />
 <h2>📄 Generating the Unified Documentation PDF</h2>
@@ -1712,8 +1714,186 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 
-<div id="doc-boot-stage8-shell" class="doc-section">
-    <div class="section-stage-badge">Stage 8: Interactive Shell &bull; Boot Sequence Order #17</div>
+<div id="doc-boot-stage8-zfs" class="doc-section">
+    <div class="section-stage-badge">Stage 8: File Server & Storage &bull; Boot Sequence Order #17</div>
+    <h1>ZFS Microkernel File Server Documentation</h1>
+<ul>
+<li><strong>Source Directory</strong>: <a href="file:///d:/os/src/fs/zfs/"><code>src/fs/zfs/</code></a> &amp; <a href="file:///d:/os/src/fs/client.rs"><code>src/fs/client.rs</code></a></li>
+<li><strong>Subsystem</strong>: Default Filesystem Architecture &amp; Standalone File Server</li>
+<li><strong>Endpoint</strong>: <code>0x20</code> (<code>ENDPOINT_ZFS_SERVER</code>)</li>
+</ul>
+<hr />
+<h2>1. Architectural Motivation</h2>
+<p>In traditional monolithic operating systems, the filesystem runs in kernel space (Ring 0) with direct block device access. This violates principle-of-least-privilege and microkernel design tenants. A single bug or corruption in the filesystem driver can compromise the entire operating system kernel.</p>
+<p>Hydra implements <strong>ZFS (Zettabyte File System)</strong> as the default filesystem, structured strictly as an <strong>autonomous Microkernel File Server (<code>ZfsServer</code>)</strong>.</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">+--------------------------------------------------------------+</span>
+<span class="c">|                     Client Applications                       |</span>
+<span class="c">|           (Hydra Interactive Shell</span><span class="nt">,</span><span class="c"> Process Loader)          |</span>
+<span class="nb">+--------------------------------------------------------------+</span>
+<span class="c">                               |</span>
+<span class="c">                   Capability Token Validation</span>
+<span class="c">                   Microkernel IPC Rendezvous (Endpoint 0x20)</span>
+<span class="c">                               v</span>
+<span class="nb">+--------------------------------------------------------------+</span>
+<span class="c">|               ZFS MICROKERNEL FILE SERVER                    |</span>
+<span class="c">|                                                              |</span>
+<span class="c">|   </span><span class="nb">+------------------------------------------------------+</span><span class="c">   |</span>
+<span class="c">|   | ZPL (ZFS POSIX Layer) / IPC Server Dispatcher        |   |</span>
+<span class="c">|   </span><span class="nb">+------------------------------------------------------+</span><span class="c">   |</span>
+<span class="c">|                              |                               |</span>
+<span class="c">|   </span><span class="nb">+------------------------------------------------------+</span><span class="c">   |</span>
+<span class="c">|   | ZAP (ZFS Attribute Processor): Micro</span><span class="nb">-</span><span class="c">ZAP Directories |   |</span>
+<span class="c">|   </span><span class="nb">+------------------------------------------------------+</span><span class="c">   |</span>
+<span class="c">|                              |                               |</span>
+<span class="c">|   </span><span class="nb">+------------------------------------------------------+</span><span class="c">   |</span>
+<span class="c">|   | DMU (Data Management Unit): Datasets &amp; Dnodes        |   |</span>
+<span class="c">|   </span><span class="nb">+------------------------------------------------------+</span><span class="c">   |</span>
+<span class="c">|                              |                               |</span>
+<span class="c">|   </span><span class="nb">+------------------------------------------------------+</span><span class="c">   |</span>
+<span class="c">|   | SPA (Storage Pool Allocator): Metaslabs &amp; Vdevs      |   |</span>
+<span class="c">|   | </span><span class="nb">-</span><span class="c"> Copy</span><span class="nb">-</span><span class="c">on</span><span class="nb">-</span><span class="c">Write (CoW) Merkle Tree Engine             |   |</span>
+<span class="c">|   | </span><span class="nb">-</span><span class="c"> Fletcher</span><span class="nb">-</span><span class="c">4 End</span><span class="nb">-</span><span class="c">to</span><span class="nb">-</span><span class="c">End Checksum Validation          |   |</span>
+<span class="c">|   | </span><span class="nb">-</span><span class="c"> Uberblock Transaction Groups (TXG)                 |   |</span>
+<span class="c">|   </span><span class="nb">+------------------------------------------------------+</span><span class="c">   |</span>
+<span class="nb">+--------------------------------------------------------------+</span>
+</code></pre></div>
+
+<hr />
+<h2>2. ZFS Core Architecture</h2>
+<p>Hydra's ZFS implementation faithfully models the fundamental layers of OpenZFS:</p>
+<h3>1. Storage Pool Allocator (SPA)</h3>
+<ul>
+<li><strong>Storage Pool</strong>: Named <code>hydrapool</code> by default.</li>
+<li><strong>VDEV (Virtual Device)</strong>: Manages physical block storage or memory-backed frames.</li>
+<li><strong>Copy-on-Write (CoW)</strong>: Data blocks are never updated in-place. Writing allocates new blocks, preserves previous data for snapshots, and links to a new Merkle root.</li>
+<li><strong>Active Uberblock</strong>: The root of the storage pool (<code>magic: 0x00bab10c</code>, <code>version: 5000</code>). Every write transaction commits an incremented Transaction Group (<code>TXG</code>).</li>
+</ul>
+<h3>2. Fletcher-4 End-to-End Checksums</h3>
+<p>Every block pointer (<code>blkptr_t</code>) carries a 256-bit Fletcher-4 checksum (4 parallel 64-bit accumulators):
+$$\text{Fletcher-4: } a = \sum w_i, \quad b = \sum a_i, \quad c = \sum b_i, \quad d = \sum c_i$$
+Upon read operations, the ZFS File Server recalculates the checksum and detects any silent data corruption before returning data to the caller.</p>
+<h3>3. Data Management Unit (DMU) &amp; Dnodes</h3>
+<ul>
+<li>Objects in ZFS are represented by <code>DnodePhys</code> structures (<code>obj_type</code>, block size, file size, direct block pointers).</li>
+<li>Supported Object Types:</li>
+<li><code>PlainFile</code>: Data payload blocks.</li>
+<li><code>Directory</code>: Associated with a ZAP object.</li>
+<li><code>Dataset</code>: Isolated filesystem namespace (<code>hydrapool/root</code>, <code>hydrapool/bin</code>).</li>
+<li><code>MasterNode</code>: Meta-Object Set (MOS) root.</li>
+</ul>
+<h3>4. ZFS Attribute Processor (ZAP)</h3>
+<ul>
+<li>Micro-ZAP structure indexing directory entries (mapping string filenames to object IDs).</li>
+<li>Enables $O(1)$ file lookups inside datasets.</li>
+</ul>
+<hr />
+<h2>3. Microkernel IPC Protocol (<code>Endpoint #0x20</code>)</h2>
+<p>Clients interact with the File Server by sending <code>Message</code> envelopes through <code>ENDPOINT_ZFS_SERVER</code>.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Protocol Label</th>
+<th style="text-align: left;">Opcode</th>
+<th style="text-align: left;">Arguments (<code>args</code>)</th>
+<th style="text-align: left;">Return Values</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ZFS_IPC_PING</code></td>
+<td style="text-align: left;"><code>0x3001</code></td>
+<td style="text-align: left;">-</td>
+<td style="text-align: left;"><code>[status, txg, 0, 0]</code></td>
+<td style="text-align: left;">Server health check and active TXG.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ZFS_IPC_LOOKUP</code></td>
+<td style="text-align: left;"><code>0x3002</code></td>
+<td style="text-align: left;"><code>[dir_obj, name_hash, 0, 0]</code></td>
+<td style="text-align: left;"><code>[status, obj_id, obj_type, 0]</code></td>
+<td style="text-align: left;">Resolves filename to object ID.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ZFS_IPC_READ</code></td>
+<td style="text-align: left;"><code>0x3003</code></td>
+<td style="text-align: left;"><code>[obj_id, dest_buf_ptr, max_len, 0]</code></td>
+<td style="text-align: left;"><code>[status, bytes_read, txg, 0]</code></td>
+<td style="text-align: left;">Reads and checksum-verifies file data.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ZFS_IPC_WRITE</code></td>
+<td style="text-align: left;"><code>0x3004</code></td>
+<td style="text-align: left;"><code>[obj_id, src_buf_ptr, len, 0]</code></td>
+<td style="text-align: left;"><code>[status, new_txg, 0, 0]</code></td>
+<td style="text-align: left;">CoW writes data and commits new TXG.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ZFS_IPC_POOL_STATUS</code></td>
+<td style="text-align: left;"><code>0x3006</code></td>
+<td style="text-align: left;">-</td>
+<td style="text-align: left;"><code>[status, total_mb, alloc_kb, free_txg]</code></td>
+<td style="text-align: left;">Reports pool metrics and health.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ZFS_IPC_SNAPSHOT</code></td>
+<td style="text-align: left;"><code>0x3007</code></td>
+<td style="text-align: left;"><code>[dataset_id, 0, 0, 0]</code></td>
+<td style="text-align: left;"><code>[status, txg, 0, 0]</code></td>
+<td style="text-align: left;">Creates point-in-time snapshot.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>4. Capability-Based Security Enforcement</h2>
+<p>The File Server verifies client capabilities on every request:
+- <strong>Read Requests</strong>: The client must present a capability containing <code>Rights::READ</code>. If missing, the server responds with <code>ZFS_STATUS_PERMISSION_DENIED</code>.
+- <strong>Write / CoW Transactions</strong>: Requires <code>Rights::WRITE</code>.
+- <strong>Snapshots</strong>: Requires <code>Rights::WRITE</code>.</p>
+<hr />
+<h2>5. Interactive Shell Commands</h2>
+<p>Hydra provides native user commands to interact with the ZFS File Server:</p>
+<div class="codehilite"><pre><span></span><code><span class="nt">hydra</span><span class="o">&gt;</span><span class="w"> </span><span class="nt">zpool</span><span class="w"> </span><span class="nt">status</span>
+<span class="w">  </span><span class="nt">pool</span><span class="o">:</span><span class="w"> </span><span class="nt">hydrapool</span>
+<span class="w"> </span><span class="nt">state</span><span class="o">:</span><span class="w"> </span><span class="nt">ONLINE</span>
+<span class="nt">status</span><span class="o">:</span><span class="w"> </span><span class="nt">The</span><span class="w"> </span><span class="nt">pool</span><span class="w"> </span><span class="nt">is</span><span class="w"> </span><span class="nt">operating</span><span class="w"> </span><span class="nt">normally</span><span class="w"> </span><span class="nt">via</span><span class="w"> </span><span class="nt">the</span><span class="w"> </span><span class="nt">Microkernel</span><span class="w"> </span><span class="nt">ZFS</span><span class="w"> </span><span class="nt">File</span><span class="w"> </span><span class="nt">Server</span><span class="o">.</span>
+<span class="nt">action</span><span class="o">:</span><span class="w"> </span><span class="nt">No</span><span class="w"> </span><span class="nt">known</span><span class="w"> </span><span class="nt">data</span><span class="w"> </span><span class="nt">errors</span><span class="w"> </span><span class="nt">detected</span><span class="o">;</span><span class="w"> </span><span class="nt">all</span><span class="w"> </span><span class="nt">blocks</span><span class="w"> </span><span class="nt">checksum-verified</span><span class="o">.</span>
+<span class="nt">config</span><span class="o">:</span>
+<span class="w">        </span><span class="nt">NAME</span><span class="w">                 </span><span class="nt">STATE</span><span class="w">     </span><span class="nt">READ</span><span class="w"> </span><span class="nt">WRITE</span><span class="w"> </span><span class="nt">CKSUM</span>
+<span class="w">        </span><span class="nt">hydrapool</span><span class="w">            </span><span class="nt">ONLINE</span><span class="w">       </span><span class="nt">0</span><span class="w">     </span><span class="nt">0</span><span class="w">     </span><span class="nt">0</span>
+<span class="w">          </span><span class="nt">vdev-ramdisk-0</span><span class="w">     </span><span class="nt">ONLINE</span><span class="w">       </span><span class="nt">0</span><span class="w">     </span><span class="nt">0</span><span class="w">     </span><span class="nt">0</span>
+
+<span class="nt">Pool</span><span class="w"> </span><span class="nt">Properties</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="nt">Metrics</span><span class="o">:</span>
+<span class="w">  </span><span class="nt">-</span><span class="w"> </span><span class="nt">Capacity</span><span class="o">:</span><span class="w">           </span><span class="nt">8</span><span class="w"> </span><span class="nt">MiB</span>
+<span class="w">  </span><span class="nt">-</span><span class="w"> </span><span class="nt">Allocated</span><span class="o">:</span><span class="w">          </span><span class="nt">128</span><span class="w"> </span><span class="nt">KiB</span>
+<span class="w">  </span><span class="nt">-</span><span class="w"> </span><span class="nt">Free</span><span class="w"> </span><span class="nt">Space</span><span class="o">:</span><span class="w">         </span><span class="nt">8064</span><span class="w"> </span><span class="nt">KiB</span>
+<span class="w">  </span><span class="nt">-</span><span class="w"> </span><span class="nt">Active</span><span class="w"> </span><span class="nt">Uberblock</span><span class="o">:</span><span class="w">   </span><span class="nt">TXG</span><span class="w"> </span><span class="p">#</span><span class="nn">2</span>
+<span class="w">  </span><span class="nt">-</span><span class="w"> </span><span class="nt">Checksum</span><span class="w"> </span><span class="nt">Algorithm</span><span class="o">:</span><span class="w"> </span><span class="nt">Fletcher-4</span><span class="w"> </span><span class="o">(</span><span class="nt">4x</span><span class="w"> </span><span class="nt">64-bit</span><span class="w"> </span><span class="nt">words</span><span class="o">)</span>
+<span class="w">  </span><span class="nt">-</span><span class="w"> </span><span class="nt">Allocation</span><span class="w"> </span><span class="nt">Policy</span><span class="o">:</span><span class="w">  </span><span class="nt">Copy-on-Write</span><span class="w"> </span><span class="o">(</span><span class="nt">CoW</span><span class="o">)</span><span class="w"> </span><span class="nt">Merkle</span><span class="w"> </span><span class="nt">Tree</span>
+
+<span class="nt">hydra</span><span class="o">&gt;</span><span class="w"> </span><span class="nt">zfs</span><span class="w"> </span><span class="nt">list</span>
+<span class="nt">NAME</span><span class="w">                     </span><span class="nt">USED</span><span class="w">    </span><span class="nt">AVAIL</span><span class="w"> </span><span class="nt">MOUNTPOINT</span>
+<span class="nt">------------------------------------------------------------------</span>
+<span class="nt">hydrapool</span><span class="o">/</span><span class="nt">root</span><span class="w">           </span><span class="nt">128K</span><span class="w">    </span><span class="nt">8064K</span><span class="w"> </span><span class="o">/</span>
+<span class="nt">hydrapool</span><span class="o">/</span><span class="nt">bin</span><span class="w">            </span><span class="nt">128K</span><span class="w">    </span><span class="nt">8064K</span><span class="w"> </span><span class="o">/</span><span class="nt">bin</span>
+
+<span class="nt">hydra</span><span class="o">&gt;</span><span class="w"> </span><span class="nt">zfs</span><span class="w"> </span><span class="nt">cat</span><span class="w"> </span><span class="nt">readme</span><span class="p">.</span><span class="nc">txt</span>
+<span class="nt">Hydra</span><span class="w"> </span><span class="nt">OS</span><span class="w"> </span><span class="nt">Default</span><span class="w"> </span><span class="nt">Filesystem</span><span class="o">:</span><span class="w"> </span><span class="nt">OpenZFS</span><span class="w"> </span><span class="nt">Architecture</span>
+<span class="nt">Integrated</span><span class="w"> </span><span class="nt">as</span><span class="w"> </span><span class="nt">an</span><span class="w"> </span><span class="nt">independent</span><span class="w"> </span><span class="nt">Microkernel</span><span class="w"> </span><span class="nt">File</span><span class="w"> </span><span class="nt">Server</span><span class="o">.</span>
+<span class="nt">All</span><span class="w"> </span><span class="nt">operations</span><span class="w"> </span><span class="nt">are</span><span class="w"> </span><span class="nt">verified</span><span class="w"> </span><span class="nt">via</span><span class="w"> </span><span class="nt">Fletcher-4</span><span class="w"> </span><span class="nt">checksums</span><span class="o">!</span>
+
+<span class="nt">hydra</span><span class="o">&gt;</span><span class="w"> </span><span class="nt">zfs</span><span class="w"> </span><span class="nt">write</span><span class="w"> </span><span class="nt">demo</span><span class="p">.</span><span class="nc">txt</span><span class="w"> </span><span class="s2">"Hello from ZFS on Hydra Microkernel!"</span>
+<span class="cp">[</span><span class="o">+</span><span class="cp">]</span><span class="w"> </span><span class="nt">CoW</span><span class="w"> </span><span class="nt">write</span><span class="w"> </span><span class="nt">committed</span><span class="w"> </span><span class="nt">to</span><span class="w"> </span><span class="nt">ZFS</span><span class="w"> </span><span class="nt">File</span><span class="w"> </span><span class="nt">Server</span><span class="o">!</span>
+<span class="w">    </span><span class="nt">-</span><span class="w"> </span><span class="nt">File</span><span class="o">:</span><span class="w"> </span><span class="s1">'demo.txt'</span><span class="w"> </span><span class="o">(</span><span class="nt">36</span><span class="w"> </span><span class="nt">bytes</span><span class="o">)</span>
+<span class="w">    </span><span class="nt">-</span><span class="w"> </span><span class="nt">Merkle</span><span class="w"> </span><span class="nt">Root</span><span class="w"> </span><span class="nt">Updated</span><span class="w"> </span><span class="nt">to</span><span class="w"> </span><span class="nt">TXG</span><span class="w"> </span><span class="p">#</span><span class="nn">3</span>
+<span class="w">    </span><span class="nt">-</span><span class="w"> </span><span class="nt">Fletcher-4</span><span class="w"> </span><span class="nt">Checksum</span><span class="w"> </span><span class="nt">computed</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="nt">stored</span>
+</code></pre></div>
+</div>
+
+
+
+<div id="doc-boot-stage9-shell" class="doc-section">
+    <div class="section-stage-badge">Stage 9: Interactive Shell &bull; Boot Sequence Order #18</div>
     <h1>Interactive Microkernel Shell Documentation</h1>
 <ul>
 <li><strong>Source Directory</strong>: <a href="file:///d:/os/src/shell/"><code>src/shell/</code></a></li>
@@ -1814,6 +1994,36 @@ An HTML version suitable for browser inspection or custom printing is also creat
 <td style="text-align: left;">Queries the hardware Real-Time Clock (RTC) via UEFI runtime services.</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>zpool</code></td>
+<td style="text-align: left;"><code>zpool &lt;status\|list&gt;</code></td>
+<td style="text-align: left;">Inspects and manages ZFS storage pools (<code>hydrapool</code>, vdevs, CoW Merkle tree).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>zfs</code></td>
+<td style="text-align: left;"><code>zfs &lt;list\|snap\|cat\|write&gt;</code></td>
+<td style="text-align: left;">Manages ZFS datasets (<code>hydrapool/root</code>, <code>hydrapool/bin</code>) and CoW snapshots.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ls</code>, <code>dir</code></td>
+<td style="text-align: left;"><code>ls [path]</code></td>
+<td style="text-align: left;">Lists files and directories from the ZFS File Server (e.g. <code>ls</code>, <code>ls /bin</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cat</code>, <code>type</code></td>
+<td style="text-align: left;"><code>cat &lt;path&gt;</code></td>
+<td style="text-align: left;">Displays file contents from ZFS with Fletcher-4 integrity verification.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>write</code>, <code>touch</code></td>
+<td style="text-align: left;"><code>write &lt;name&gt; [text]</code></td>
+<td style="text-align: left;">Creates or updates a file in ZFS via Copy-on-Write transaction.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>efifs</code></td>
+<td style="text-align: left;"><code>efifs &lt;ls\|cat\|run&gt;</code></td>
+<td style="text-align: left;">Low-level firmware diagnostic tool inspecting raw UEFI FAT bootloader media.</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>color</code></td>
 <td style="text-align: left;"><code>color &lt;name&gt;</code></td>
 <td style="text-align: left;">Customizes shell prompt and text color (<code>cyan</code>, <code>green</code>, <code>yellow</code>, <code>red</code>, <code>white</code>, <code>magenta</code>, <code>blue</code>).</td>
@@ -1851,8 +2061,40 @@ An HTML version suitable for browser inspection or custom printing is also creat
 </tbody>
 </table>
 <hr />
-<h2>3. How New Commands &amp; Programs are Integrated</h2>
-<h3>Step 1: Create a New Command File</h3>
+<h2>3. Integrating New Commands &amp; Standalone Programs</h2>
+<p>Hydra supports two complementary paradigms for adding commands and applications:</p>
+<h3>Approach A: Dynamic Filesystem Search ($PATH Discovery — No Code Changes!)</h3>
+<p>This is the recommended approach for integrating standalone applications, external utilities, and third-party binaries.</p>
+<ol>
+<li><strong>How It Works</strong>:
+   When a command is entered (e.g. <code>hydra&gt; matrix</code> or <code>hydra&gt; test_app arg1 arg2</code>), the shell first checks built-in commands. If not found, it dynamically searches the <code>$PATH</code> directories on the boot volume:
+   - <code>\bin\</code>
+   - <code>\apps\</code>
+   - <code>\EFI\BOOT\</code>
+   - <code>\</code> (root directory)</li>
+</ol>
+<p>For each directory, it probes for:
+   - <code>&lt;dir&gt;\&lt;cmd&gt;.efi</code>
+   - <code>&lt;dir&gt;\&lt;cmd&gt;</code></p>
+<ol start="2">
+<li>
+<p><strong>Loading &amp; Execution</strong>:
+   - The file is located on the UEFI boot volume via <code>SimpleFileSystem</code>.
+   - The binary's PE32+ header (<code>MZ</code> signature) is verified.
+   - Memory pages are dynamically allocated and the executable is loaded via <code>uefi::boot::load_image</code>.
+   - Arguments are passed through the UEFI <code>LoadedImage</code> protocol.
+   - The process is executed via <code>uefi::boot::start_image</code>.
+   - Upon termination, control returns immediately to the Hydra interactive shell prompt!</p>
+</li>
+<li>
+<p><strong>Zero Kernel Modifications</strong>:
+   You can drop any compiled UEFI PE32+ <code>.efi</code> executable into <code>\bin\</code> or <code>\apps\</code> on your boot USB or disk image at any time. <strong>You do NOT need to modify <code>commands/mod.rs</code> or recompile the kernel!</strong></p>
+</li>
+</ol>
+<hr />
+<h3>Approach B: Static Built-in Command Integration</h3>
+<p>Used for core microkernel primitives that require direct access to kernel internals, <code>CapabilityTable</code>, or <code>ShellState</code>.</p>
+<h4>Step 1: Create a New Command File</h4>
 <p>Create a new file in <code>src/shell/commands/</code>, e.g. <code>src/shell/commands/my_tool.rs</code>:</p>
 <div class="codehilite"><pre><span></span><code><span class="k">use</span><span class="w"> </span><span class="k">crate</span><span class="p">::</span><span class="n">console</span><span class="p">::</span><span class="n">set_color</span><span class="p">;</span>
 <span class="k">use</span><span class="w"> </span><span class="n">uefi</span><span class="p">::</span><span class="n">proto</span><span class="p">::</span><span class="n">console</span><span class="p">::</span><span class="n">text</span><span class="p">::</span><span class="n">Color</span><span class="p">;</span>
@@ -1885,7 +2127,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 <span class="p">}</span>
 </code></pre></div>
 
-<h3>Step 2: Register the Command</h3>
+<h4>Step 2: Register in <code>src/shell/commands/mod.rs</code></h4>
 <p>In <a href="file:///d:/os/src/shell/commands/mod.rs"><code>src/shell/commands/mod.rs</code></a>:
 1. Add the module: <code>pub mod my_tool;</code>
 2. Export the struct: <code>pub use my_tool::MyToolCommand;</code>
@@ -1895,10 +2137,6 @@ An HTML version suitable for browser inspection or custom printing is also creat
        ...
        &amp;MyToolCommand,
    ];</code></p>
-<p>The shell automatically:
-- Parses user arguments and routes execution to <code>execute()</code>.
-- Supports the command's primary name and all specified aliases.
-- Auto-generates help documentation in <code>help</code> and <code>help mytool</code>.</p>
 <hr />
 <h2>4. Architecture &amp; Key Features</h2>
 <h3>Thread-Safe Interactive Input</h3>

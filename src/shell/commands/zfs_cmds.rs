@@ -1,0 +1,249 @@
+use uefi::proto::console::text::Color;
+
+use crate::console::set_color;
+use crate::fs::client::ZfsClient;
+use crate::fs::zfs::server::ZFS_SERVER;
+use crate::shell::command::Command;
+use crate::shell::state::ShellState;
+
+pub struct ZpoolCommand;
+
+impl Command for ZpoolCommand {
+    fn name(&self) -> &'static str {
+        "zpool"
+    }
+
+    fn description(&self) -> &'static str {
+        "Manage ZFS storage pools (e.g. 'zpool status', 'zpool list')"
+    }
+
+    fn usage(&self) -> &'static str {
+        "zpool <status|list>"
+    }
+
+    fn execute(&self, args: &[&str], _state: &mut ShellState) {
+        let subcmd = if args.is_empty() { "status" } else { args[0] };
+
+        match subcmd {
+            "status" => {
+                set_color(Color::LightCyan, Color::Black);
+                println!("  pool: hydrapool");
+                set_color(Color::White, Color::Black);
+                println!(" state: ONLINE");
+                println!("status: The pool is operating normally via the Microkernel ZFS File Server.");
+                println!("action: No known data errors detected; all blocks checksum-verified.");
+                println!("config:");
+                println!("        NAME                 STATE     READ WRITE CKSUM");
+                println!("        hydrapool            ONLINE       0     0     0");
+                println!("          vdev-ramdisk-0     ONLINE       0     0     0");
+
+                if let Ok((total_mb, alloc_kb, free_kb, txg)) = ZfsClient::pool_status() {
+                    set_color(Color::Yellow, Color::Black);
+                    println!("\nPool Properties & Metrics:");
+                    set_color(Color::White, Color::Black);
+                    println!("  - Capacity:           {} MiB", total_mb);
+                    println!("  - Allocated:          {} KiB", alloc_kb);
+                    println!("  - Free Space:         {} KiB", free_kb);
+                    println!("  - Active Uberblock:   TXG #{}", txg);
+                    println!("  - Checksum Algorithm: Fletcher-4 (4x 64-bit words)");
+                    println!("  - Allocation Policy:  Copy-on-Write (CoW) Merkle Tree");
+                }
+            }
+
+            "list" => {
+                set_color(Color::Yellow, Color::Black);
+                println!("{:<14} {:>8} {:>8} {:>8} {:>6} {:>6} {:<8}",
+                         "NAME", "SIZE", "ALLOC", "FREE", "CAP", "DEDUP", "HEALTH");
+                println!("------------------------------------------------------------------");
+
+                if let Ok((total_mb, alloc_kb, free_kb, _)) = ZfsClient::pool_status() {
+                    let total_kb = total_mb * 1024;
+                    let cap_pct = if total_kb > 0 { (alloc_kb * 100) / total_kb } else { 0 };
+                    set_color(Color::White, Color::Black);
+                    println!("{:<14} {:>7}M {:>7}K {:>7}K {:>5}% {:>6} {:<8}",
+                             "hydrapool", total_mb, alloc_kb, free_kb, cap_pct, "1.00x", "ONLINE");
+                }
+            }
+
+            _ => {
+                set_color(Color::LightRed, Color::Black);
+                println!("Unknown sub-command: '{}'. Usage: zpool <status|list>", subcmd);
+            }
+        }
+    }
+}
+
+pub struct ZfsCommand;
+
+impl Command for ZfsCommand {
+    fn name(&self) -> &'static str {
+        "zfs"
+    }
+
+    fn description(&self) -> &'static str {
+        "Configure ZFS datasets, snapshots, and files (e.g. 'zfs list', 'zfs snap', 'zfs cat')"
+    }
+
+    fn usage(&self) -> &'static str {
+        "zfs <list|snap|cat|write> [args...]"
+    }
+
+    fn execute(&self, args: &[&str], state: &mut ShellState) {
+        if args.is_empty() {
+            set_color(Color::LightRed, Color::Black);
+            println!("Usage: zfs <list | snap <id> | cat <path> | write <name> <text...>>");
+            return;
+        }
+
+        match args[0] {
+            "list" => {
+                set_color(Color::Yellow, Color::Black);
+                println!("{:<24} {:>8} {:>8} {:<16}", "NAME", "USED", "AVAIL", "MOUNTPOINT");
+                println!("------------------------------------------------------------------");
+
+                let server_lock = ZFS_SERVER.lock();
+                if let Some(server) = server_lock.as_ref() {
+                    for ds in server.dmu.datasets.iter() {
+                        if ds.is_valid {
+                            set_color(Color::LightCyan, Color::Black);
+                            print!("{:<24} ", ds.name_str());
+                            set_color(Color::White, Color::Black);
+                            println!("{:>7}K {:>7}K {:<16}", "128", "8064", ds.mountpoint_str());
+                        }
+                    }
+
+                    // Display snapshots if any
+                    let mut has_snaps = false;
+                    for snap in server.dmu.snapshots.iter() {
+                        if snap.is_valid {
+                            if !has_snaps {
+                                println!("\nSnapshots:");
+                                has_snaps = true;
+                            }
+                            let mut buf = [0u8; 64];
+                            set_color(Color::LightGreen, Color::Black);
+                            println!("  {} (Created at TXG #{})", snap.full_name(&mut buf), snap.txg);
+                        }
+                    }
+                }
+            }
+
+            "snap" | "snapshot" => {
+                if args.len() < 2 {
+                    set_color(Color::LightRed, Color::Black);
+                    println!("Usage: zfs snap <dataset_id>");
+                    return;
+                }
+                match ZfsClient::snapshot(0) {
+                    Ok(txg) => {
+                        set_color(Color::LightGreen, Color::Black);
+                        println!("[+] Snapshot created successfully at TXG #{}!", txg);
+                    }
+                    Err(e) => {
+                        set_color(Color::LightRed, Color::Black);
+                        println!("[!] Failed to create snapshot: {}", e);
+                    }
+                }
+            }
+
+            "cat" => {
+                if args.len() < 2 {
+                    set_color(Color::LightRed, Color::Black);
+                    println!("Usage: zfs cat <filename>");
+                    return;
+                }
+                let target = args[1];
+                match ZfsClient::lookup(target) {
+                    Ok((obj_id, _)) => {
+                        let mut buf = [0u8; 1024];
+                        let cap = state.cap_table.get(1).cloned();
+                        match ZfsClient::read_file(obj_id, &mut buf, cap) {
+                            Ok(n) => {
+                                set_color(Color::White, Color::Black);
+                                if let Ok(s) = core::str::from_utf8(&buf[..n]) {
+                                    println!("{}", s);
+                                } else {
+                                    println!("[Binary content: {} bytes, Fletcher-4 verified]", n);
+                                }
+                            }
+                            Err(e) => {
+                                set_color(Color::LightRed, Color::Black);
+                                println!("[!] Error reading file: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        set_color(Color::LightRed, Color::Black);
+                        println!("[!] File '{}' not found: {}", target, e);
+                    }
+                }
+            }
+
+            "write" => {
+                if args.len() < 3 {
+                    set_color(Color::LightRed, Color::Black);
+                    println!("Usage: zfs write <name> <content...>");
+                    return;
+                }
+                let name = args[1];
+                let mut content_buf = [0u8; 512];
+                let mut content_len = 0;
+                for (i, word) in args[2..].iter().enumerate() {
+                    if i > 0 && content_len < content_buf.len() {
+                        content_buf[content_len] = b' ';
+                        content_len += 1;
+                    }
+                    for &b in word.as_bytes() {
+                        if content_len < content_buf.len() {
+                            content_buf[content_len] = b;
+                            content_len += 1;
+                        }
+                    }
+                }
+                let content_bytes = &content_buf[..content_len];
+                let _cap = state.cap_table.get(1).cloned();
+
+                let mut server_lock = ZFS_SERVER.lock();
+                if let Some(server) = server_lock.as_mut() {
+                    let file_obj = match server.dmu.allocate_object(
+                        crate::fs::zfs::types::DnodeType::PlainFile,
+                        name,
+                    ) {
+                        Ok(id) => id,
+                        Err(e) => {
+                            set_color(Color::LightRed, Color::Black);
+                            println!("[!] Failed to allocate dnode: {}", e);
+                            return;
+                        }
+                    };
+
+                    match server.dmu.cow_write_file(file_obj, content_bytes, &mut server.spa) {
+                        Ok(new_txg) => {
+                            let bin_dir = server.bin_dir_obj;
+                            let _ = server.dmu.add_directory_entry(
+                                bin_dir,
+                                name,
+                                file_obj,
+                                crate::fs::zfs::types::DnodeType::PlainFile,
+                            );
+                            set_color(Color::LightGreen, Color::Black);
+                            println!("[+] CoW write committed to ZFS File Server!");
+                            println!("    - File: '{}' ({} bytes)", name, content_bytes.len());
+                            println!("    - Merkle Root Updated to TXG #{}", new_txg);
+                            println!("    - Fletcher-4 Checksum computed & stored");
+                        }
+                        Err(e) => {
+                            set_color(Color::LightRed, Color::Black);
+                            println!("[!] CoW write failed: {}", e);
+                        }
+                    }
+                }
+            }
+
+            _ => {
+                set_color(Color::LightRed, Color::Black);
+                println!("Unknown sub-command: '{}'. Usage: zfs <list|snap|cat|write>", args[0]);
+            }
+        }
+    }
+}

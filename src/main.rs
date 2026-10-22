@@ -5,6 +5,7 @@ pub mod arch;
 pub mod capability;
 #[macro_use]
 pub mod console;
+pub mod fs;
 pub mod ipc;
 pub mod memory;
 pub mod shell;
@@ -148,6 +149,18 @@ fn main() -> Status {
         );
     }
 
+    // 7. ZFS Microkernel File Server Initialization
+    console::set_color(Color::Yellow, Color::Black);
+    println!("\n[*] Step 6: Initializing ZFS Microkernel File Server...");
+    fs::init_server();
+    console::set_color(Color::LightGreen, Color::Black);
+    println!(
+        "[+] ZFS File Server Online (Endpoint #{:#x}):",
+        fs::zfs::ENDPOINT_ZFS_SERVER
+    );
+    println!("    - Storage Pool: 'hydrapool' (8 MiB, Fletcher-4 Checksums, CoW enabled)");
+    println!("    - Datasets: hydrapool/root (/), hydrapool/bin (/bin)");
+
     console::set_color(Color::LightCyan, Color::Black);
     println!("\n============================================================");
     println!(" [+] HYDRA MICROKERNEL PHASE 1 SUBSYSTEMS OPERATIONAL!      ");
@@ -156,4 +169,3 @@ fn main() -> Status {
     // Hand over execution to the interactive microkernel shell
     shell::run();
 }
-

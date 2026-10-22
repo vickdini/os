@@ -58,6 +58,12 @@ impl Command for HelpCommand {
             set_color(Color::White, Color::Black);
             println!("- {}", cmd.description());
         }
+        set_color(Color::LightCyan, Color::Black);
+        println!("\nDefault Filesystem (ZFS Microkernel File Server):");
+        set_color(Color::White, Color::Black);
+        println!("  - Use 'ls', 'cat', 'write' to manage files in the ZFS pool ('hydrapool').");
+        println!("  - Use 'zpool' and 'zfs' for pool and dataset/snapshot administration.");
+        println!("  - Use 'efifs' for low-level UEFI bootloader media diagnostics.");
         println!("\nType 'help <command>' for specific syntax and options.\n");
     }
 }

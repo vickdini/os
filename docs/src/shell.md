@@ -49,6 +49,12 @@ src/shell/
 | `cap_revoke` | `cap_revoke <slot>` | Revokes an existing capability from the specified CSpace slot. |
 | `ipc` | `ipc <label> [a0] [a1]` | Sends and receives a fast register IPC message through rendezvous Endpoint #1. |
 | `time`, `date` | `time` | Queries the hardware Real-Time Clock (RTC) via UEFI runtime services. |
+| `zpool` | `zpool <status\|list>` | Inspects and manages ZFS storage pools (`hydrapool`, vdevs, CoW Merkle tree). |
+| `zfs` | `zfs <list\|snap\|cat\|write>` | Manages ZFS datasets (`hydrapool/root`, `hydrapool/bin`) and CoW snapshots. |
+| `ls`, `dir` | `ls [path]` | Lists files and directories from the ZFS File Server (e.g. `ls`, `ls /bin`). |
+| `cat`, `type` | `cat <path>` | Displays file contents from ZFS with Fletcher-4 integrity verification. |
+| `write`, `touch` | `write <name> [text]` | Creates or updates a file in ZFS via Copy-on-Write transaction. |
+| `efifs` | `efifs <ls\|cat\|run>` | Low-level firmware diagnostic tool inspecting raw UEFI FAT bootloader media. |
 | `color` | `color <name>` | Customizes shell prompt and text color (`cyan`, `green`, `yellow`, `red`, `white`, `magenta`, `blue`). |
 | `echo` | `echo <text...>` | Echoes input arguments back to the screen. |
 | `clear`, `cls` | `clear` | Clears the active screen buffer and resets the cursor. |
@@ -59,9 +65,41 @@ src/shell/
 
 ---
 
-## 3. How New Commands & Programs are Integrated
+## 3. Integrating New Commands & Standalone Programs
 
-### Step 1: Create a New Command File
+Hydra supports two complementary paradigms for adding commands and applications:
+
+### Approach A: Dynamic Filesystem Search ($PATH Discovery — No Code Changes!)
+This is the recommended approach for integrating standalone applications, external utilities, and third-party binaries.
+
+1. **How It Works**:
+   When a command is entered (e.g. `hydra> matrix` or `hydra> test_app arg1 arg2`), the shell first checks built-in commands. If not found, it dynamically searches the `$PATH` directories on the boot volume:
+   - `\bin\`
+   - `\apps\`
+   - `\EFI\BOOT\`
+   - `\` (root directory)
+
+   For each directory, it probes for:
+   - `<dir>\<cmd>.efi`
+   - `<dir>\<cmd>`
+
+2. **Loading & Execution**:
+   - The file is located on the UEFI boot volume via `SimpleFileSystem`.
+   - The binary's PE32+ header (`MZ` signature) is verified.
+   - Memory pages are dynamically allocated and the executable is loaded via `uefi::boot::load_image`.
+   - Arguments are passed through the UEFI `LoadedImage` protocol.
+   - The process is executed via `uefi::boot::start_image`.
+   - Upon termination, control returns immediately to the Hydra interactive shell prompt!
+
+3. **Zero Kernel Modifications**:
+   You can drop any compiled UEFI PE32+ `.efi` executable into `\bin\` or `\apps\` on your boot USB or disk image at any time. **You do NOT need to modify `commands/mod.rs` or recompile the kernel!**
+
+---
+
+### Approach B: Static Built-in Command Integration
+Used for core microkernel primitives that require direct access to kernel internals, `CapabilityTable`, or `ShellState`.
+
+#### Step 1: Create a New Command File
 Create a new file in `src/shell/commands/`, e.g. `src/shell/commands/my_tool.rs`:
 
 ```rust
@@ -96,7 +134,7 @@ impl Command for MyToolCommand {
 }
 ```
 
-### Step 2: Register the Command
+#### Step 2: Register in `src/shell/commands/mod.rs`
 In [`src/shell/commands/mod.rs`](file:///d:/os/src/shell/commands/mod.rs):
 1. Add the module: `pub mod my_tool;`
 2. Export the struct: `pub use my_tool::MyToolCommand;`
@@ -107,11 +145,6 @@ In [`src/shell/commands/mod.rs`](file:///d:/os/src/shell/commands/mod.rs):
        &MyToolCommand,
    ];
    ```
-
-The shell automatically:
-- Parses user arguments and routes execution to `execute()`.
-- Supports the command's primary name and all specified aliases.
-- Auto-generates help documentation in `help` and `help mytool`.
 
 ---
 

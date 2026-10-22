@@ -1,5 +1,6 @@
 pub mod command;
 pub mod commands;
+pub mod fs;
 pub mod state;
 
 use core::str;
@@ -40,9 +41,11 @@ pub fn execute_command(cmd_line: &str, state: &mut ShellState) {
 
     if let Some(cmd) = commands::find_command(command_name) {
         cmd.execute(args, state);
+    } else if fs::search_and_execute(command_name, args, state) {
+        // Successfully found and executed external program via $PATH
     } else {
         set_color(Color::LightRed, Color::Black);
-        println!("Unknown command: '{}'. Type 'help' for available commands.", command_name);
+        println!("Unknown command: '{}'. Type 'help' for built-ins or 'path' for executable search dirs.", command_name);
     }
 }
 

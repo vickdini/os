@@ -151,11 +151,18 @@ DOCS_ORDER = [
         "subtitle": "Circular FIFO ring buffers, rendezvous mailboxes, and thread-safe SharedEndpoint.",
     },
     {
-        "stage": "Stage 8: Interactive Shell",
+        "stage": "Stage 8: File Server & Storage",
+        "title": "ZFS Microkernel File Server Architecture",
+        "file": "docs/src/zfs.md",
+        "anchor": "doc-boot-stage8-zfs",
+        "subtitle": "Microkernel ZFS File Server (Endpoint 0x20), CoW Merkle tree, Fletcher-4 checksums, and datasets.",
+    },
+    {
+        "stage": "Stage 9: Interactive Shell",
         "title": "Interactive Microkernel Shell & Command REPL",
         "file": "docs/src/shell.md",
-        "anchor": "doc-boot-stage8-shell",
-        "subtitle": "Command REPL, real-time memory/CPU inspection, CSpace manipulation, and IPC testing.",
+        "anchor": "doc-boot-stage9-shell",
+        "subtitle": "Command REPL, real-time memory/CPU inspection, CSpace manipulation, ZFS commands, and IPC testing.",
     },
 ]
 

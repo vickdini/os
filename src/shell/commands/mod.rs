@@ -1,5 +1,7 @@
 pub mod caps;
 pub mod cpu;
+pub mod efifs;
+pub mod fs_cmds;
 pub mod help;
 pub mod info;
 pub mod ipc;
@@ -9,11 +11,14 @@ pub mod power;
 pub mod status;
 pub mod time;
 pub mod translate;
+pub mod zfs_cmds;
 
 use crate::shell::command::Command;
 
 pub use caps::{CapInsertCommand, CapRevokeCommand, CapsCommand};
 pub use cpu::CpuCommand;
+pub use efifs::EfifsCommand;
+pub use fs_cmds::{CatCommand, LsCommand, WriteCommand};
 pub use help::HelpCommand;
 pub use info::InfoCommand;
 pub use ipc::IpcCommand;
@@ -23,6 +28,7 @@ pub use power::{HaltCommand, RebootCommand, ShutdownCommand};
 pub use status::StatusCommand;
 pub use time::TimeCommand;
 pub use translate::TranslateCommand;
+pub use zfs_cmds::{ZfsCommand, ZpoolCommand};
 
 /// Static registry of all built-in commands and integrated programs.
 /// To integrate a new command or program, instantiate it in this slice!
@@ -39,6 +45,12 @@ pub static COMMANDS: &[&dyn Command] = &[
     &CapRevokeCommand,
     &IpcCommand,
     &TimeCommand,
+    &ZpoolCommand,
+    &ZfsCommand,
+    &LsCommand,
+    &CatCommand,
+    &WriteCommand,
+    &EfifsCommand,
     &ColorCommand,
     &EchoCommand,
     &ClearCommand,
