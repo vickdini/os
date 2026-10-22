@@ -28,7 +28,14 @@ Hydra is a bare-metal OS kernel built for the `x86_64-unknown-uefi` target. Unli
 ├── .cargo/
 │   └── config.toml           # Sets default target to x86_64-unknown-uefi
 ├── src/
-│   └── main.rs               # Kernel entry point and UEFI console interface
+│   ├── arch/                 # CPU segmentation, GDT/TSS, control registers
+│   ├── capability/           # Capability-based security model & CSpace tables
+│   ├── memory/               # UEFI memory map, frame allocator & 4-level paging
+│   ├── ipc/                  # Microkernel message queues and rendezvous endpoints
+│   ├── console.rs            # Thread-safe formatting & UEFI console driver
+│   └── main.rs               # Kernel entry point and bootstrap orchestrator
+├── docs/                     # Comprehensive module-by-module technical documentation
+│   └── README.md             # Documentation index & concept guide
 ├── dist/
 │   └── x86_64/
 │       ├── bootx64.efi       # Compiled native PE32+ UEFI executable
@@ -40,6 +47,8 @@ Hydra is a bare-metal OS kernel built for the `x86_64-unknown-uefi` target. Unli
 ├── qemu.bat                  # One-click Windows QEMU runner script
 └── README.md
 ```
+
+> **📖 Complete Documentation**: Detailed documentation for every source file with real-world analogies, conceptual explanations, diagrams, and API breakdowns is available in the [`docs/`](file:///d:/os/docs/README.md) directory.
 
 ---
 

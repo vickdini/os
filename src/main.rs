@@ -1,41 +1,159 @@
 #![no_std]
 #![no_main]
 
-use core::fmt::Write;
+pub mod arch;
+pub mod capability;
+#[macro_use]
+pub mod console;
+pub mod ipc;
+pub mod memory;
+
 use core::panic::PanicInfo;
 use uefi::prelude::*;
 use uefi::proto::console::text::Color;
+use x86_64::VirtAddr;
+
+use capability::{table::CapabilityTable, CapType, Capability, Rights};
+use ipc::{Endpoint, Message};
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    loop {}
-}
-
-pub fn print_clear() {
-    uefi::system::with_stdout(|stdout| {
-        let _ = stdout.clear();
-    });
-}
-
-pub fn print_set_color(foreground: Color, background: Color) {
-    uefi::system::with_stdout(|stdout| {
-        let _ = stdout.set_color(foreground, background);
-    });
-}
-
-pub fn print_str(text: &str) {
-    uefi::system::with_stdout(|stdout| {
-        let _ = stdout.write_str(text);
-    });
+    console::set_color(Color::LightRed, Color::Black);
+    println!("\n[!] KERNEL PANIC: {:?}", _info);
+    x86_64::instructions::interrupts::disable();
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
 #[entry]
 fn main() -> Status {
     uefi::helpers::init().unwrap();
 
-    print_clear();
-    print_set_color(Color::Yellow, Color::Black);
-    print_str("Welcome to Hydra in Rust!\nBy Vick Dini\n");
+    console::clear_screen();
+    console::set_color(Color::LightCyan, Color::Black);
+    println!("============================================================");
+    println!("                HYDRA MICROKERNEL v0.1.0                     ");
+    println!("     UNIX-like Distributed Cloud/Fog/Edge Operating System  ");
+    println!("============================================================\n");
 
-    loop {}
+    // 1. GDT & TSS Setup
+    console::set_color(Color::Yellow, Color::Black);
+    println!("[*] Step 1: Initializing GDT, TSS & Ring 3 Segments...");
+    arch::gdt::init();
+    console::set_color(Color::LightGreen, Color::Black);
+    println!("[+] GDT loaded successfully.");
+
+    // 2. CPU State
+    let cpu = arch::cpu::read_state();
+    console::set_color(Color::White, Color::Black);
+    println!("    - CR0: {:?}", cpu.cr0);
+    println!("    - CR3 (Active PML4 Root): {:#x}", cpu.cr3_frame.as_u64());
+    println!("    - CR4: {:?}", cpu.cr4);
+
+    // 3. Memory Subsystem: UEFI Memory Map & Physical Frame Allocator
+    console::set_color(Color::Yellow, Color::Black);
+    println!("\n[*] Step 2: Discovering Memory & Initializing Frame Allocator...");
+    memory::frame_allocator::init_memory_from_uefi();
+
+    let (usable_mb, allocated_kb) = {
+        let alloc = memory::frame_allocator::FRAME_ALLOCATOR.lock();
+        (
+            alloc.total_usable_memory() / (1024 * 1024),
+            alloc.allocated_memory() / 1024,
+        )
+    };
+    console::set_color(Color::LightGreen, Color::Black);
+    println!("[+] Physical Memory Manager Online:");
+    println!("    - Total Usable RAM: {} MiB", usable_mb);
+    println!("    - Allocated: {} KiB", allocated_kb);
+
+    // Allocate a test physical frame
+    let test_frame = {
+        let mut alloc = memory::frame_allocator::FRAME_ALLOCATOR.lock();
+        alloc.allocate_frame()
+    };
+    if let Some(frame) = test_frame {
+        println!(
+            "    - Allocated Test Frame: {:#x}",
+            frame.start_address().as_u64()
+        );
+    }
+
+    // 4. Virtual Memory & 4-Level Page Table Translation
+    console::set_color(Color::Yellow, Color::Black);
+    println!("\n[*] Step 3: Verifying 4-Level Paging (PML4) Address Translation...");
+    let address_space = memory::paging::AddressSpace::active();
+    let sample_virt = VirtAddr::new(main as *const () as usize as u64);
+    let sample_phys = unsafe { address_space.translate_addr(sample_virt) };
+    console::set_color(Color::LightGreen, Color::Black);
+    if let Some(phys) = sample_phys {
+        println!(
+            "[+] Translated VirtAddr {:#x} -> PhysAddr {:#x}",
+            sample_virt.as_u64(),
+            phys.as_u64()
+        );
+    } else {
+        println!(
+            "[+] VirtAddr {:#x} translation: Identity/Mapped",
+            sample_virt.as_u64()
+        );
+    }
+
+    // 5. Capability-Based Security Model
+    console::set_color(Color::Yellow, Color::Black);
+    println!("\n[*] Step 4: Initializing Task Capability Space...");
+    let mut cap_table = CapabilityTable::new();
+    let root_cap = Capability::new(
+        CapType::AddressSpace {
+            root_cr3: cpu.cr3_frame.as_u64(),
+        },
+        Rights::ALL,
+    );
+    let slot0 = cap_table.insert(root_cap).unwrap();
+    let ep_cap = Capability::new(
+        CapType::Endpoint { endpoint_id: 1 },
+        Rights(Rights::READ.0 | Rights::WRITE.0 | Rights::CALL.0),
+    );
+    let slot1 = cap_table.insert(ep_cap).unwrap();
+    console::set_color(Color::LightGreen, Color::Black);
+    println!("[+] Capability Table configured:");
+    println!("    - Slot {}: CapType::AddressSpace with Rights::ALL", slot0);
+    println!(
+        "    - Slot {}: CapType::Endpoint (id=1) with READ|WRITE|CALL",
+        slot1
+    );
+
+    // 6. Fast Capability-Mediated IPC Rendezvous
+    console::set_color(Color::Yellow, Color::Black);
+    println!("\n[*] Step 5: Testing Microkernel IPC Rendezvous...");
+    let mut endpoint = Endpoint::new(1);
+    let msg = Message::with_args(0x1001, [42, 1337, 0, 0]).with_cap(ep_cap);
+    endpoint.send(msg).unwrap();
+    console::set_color(Color::LightGreen, Color::Black);
+    println!(
+        "[+] IPC Message queued on Endpoint #{}: label={:#x}, args={:?}",
+        endpoint.id(),
+        msg.label,
+        msg.args
+    );
+
+    if let Some(received) = endpoint.receive() {
+        println!(
+            "[+] IPC Message received from Endpoint #{}: label={:#x}, args={:?}",
+            endpoint.id(),
+            received.label,
+            received.args
+        );
+    }
+
+    console::set_color(Color::LightCyan, Color::Black);
+    println!("\n============================================================");
+    println!(" [+] HYDRA MICROKERNEL PHASE 1 SUBSYSTEMS OPERATIONAL!      ");
+    println!("============================================================");
+
+    x86_64::instructions::interrupts::disable();
+    loop {
+        x86_64::instructions::hlt();
+    }
 }

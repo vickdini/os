@@ -7,6 +7,9 @@ build = false
 
 [dependencies]
 uefi = "0.41.0"
+x86_64 = { version = "0.15", default-features = false, features = ["instructions"] }
+spin = "0.9"
+log = "0.4"
 
 [profile.dev]
 panic = "abort"
