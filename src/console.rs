@@ -86,6 +86,13 @@ impl ScrollbackBuffer {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.head = 0;
+        self.count = 0;
+        self.cur_len = 0;
+        self.lens = [0; SCROLLBACK_MAX_LINES];
+    }
+
     pub fn push_str(&mut self, s: &str, attr: u8) {
         for b in s.bytes() {
             if b == b'\n' {
@@ -236,6 +243,12 @@ pub fn clear_screen() {
             let _ = stdout.clear();
         });
     }
+}
+
+/// Clears the terminal scrollback history buffer.
+pub fn clear_scrollback() {
+    let mut console = CONSOLE.lock();
+    console.scrollback.clear();
 }
 
 

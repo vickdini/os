@@ -71,7 +71,8 @@ pub fn take_hardware_ownership() -> Result<HardwareTakeoverStats, &'static str> 
 
     *done = true;
 
-    // Clear display buffer so takeover banner begins on a clean screen
+    // Clear display buffer and scrollback history so takeover begins on a clean screen
+    crate::console::clear_scrollback();
     clear_screen();
 
     // Display takeover banner on standalone framebuffer

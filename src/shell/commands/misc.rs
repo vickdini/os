@@ -86,7 +86,7 @@ impl Command for ClearCommand {
     }
 
     fn description(&self) -> &'static str {
-        "Clear the active screen buffer"
+        "Clear the active screen buffer and scrollback history"
     }
 
     fn usage(&self) -> &'static str {
@@ -94,6 +94,7 @@ impl Command for ClearCommand {
     }
 
     fn execute(&self, _args: &[&str], _state: &mut ShellState) {
+        crate::console::clear_scrollback();
         clear_screen();
         print_welcome_banner();
     }
