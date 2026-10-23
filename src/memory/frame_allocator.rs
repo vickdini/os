@@ -68,6 +68,25 @@ impl PhysicalMemoryManager {
         }
         None
     }
+
+    /// Allocates a contiguous block of physical frames (e.g. for the kernel heap or DMA buffers).
+    pub fn allocate_contiguous_frames(&mut self, count: usize) -> Option<PhysFrame<Size4KiB>> {
+        let count_u64 = count as u64;
+        while self.current_region_idx < self.region_count {
+            if let Some(region) = self.regions[self.current_region_idx] {
+                let remaining = region.page_count.saturating_sub(self.next_page_in_region);
+                if remaining >= count_u64 {
+                    let frame_addr = region.start + (self.next_page_in_region * PAGE_SIZE);
+                    self.next_page_in_region += count_u64;
+                    self.allocated_frames_count += count_u64;
+                    return Some(PhysFrame::containing_address(frame_addr));
+                }
+            }
+            self.current_region_idx += 1;
+            self.next_page_in_region = 0;
+        }
+        None
+    }
 }
 
 unsafe impl FrameAllocator<Size4KiB> for PhysicalMemoryManager {

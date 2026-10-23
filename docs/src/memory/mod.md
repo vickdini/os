@@ -16,4 +16,6 @@ It abstracts low-level hardware memory mechanisms (UEFI memory descriptors, x86_
 ## 2. Submodules
 
 - [`frame_allocator.rs`](file:///d:/os/docs/src/memory/frame_allocator.md): Manages physical memory frames (4 KiB) discovered from the UEFI firmware memory map.
+- [`heap.rs`](file:///d:/os/docs/src/memory/heap.md): Dynamic kernel heap allocator and global allocator (`alloc` crate) providing `Box`, `Vec`, `String`.
 - [`paging.rs`](file:///d:/os/docs/src/memory/paging.md): Manages virtual memory address spaces and implements 4-level PML4 address translation.
+

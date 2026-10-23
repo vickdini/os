@@ -397,7 +397,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
         <strong>Target Architecture:</strong> x86_64-unknown-uefi (Native 64-bit Long Mode)<br>
         <strong>Security Model:</strong> Capability-Based Access Control (seL4-style)<br>
         <strong>IPC Subsystem:</strong> Synchronous &amp; Asynchronous Message Rendezvous<br>
-        <strong>Generated:</strong> October 22, 2026
+        <strong>Generated:</strong> October 23, 2026
     </div>
 </div>
 
@@ -422,6 +422,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <li class="toc-stage-header">Stage 4: Memory Subsystem</li>
 <li class="toc-item"><a href="#doc-boot-stage4-mod" class="toc-link"><span class="toc-title">Memory Subsystem Coordinator</span><span class="toc-sub">Coordinator binding physical frame management and virtual memory translation.</span></a></li>
 <li class="toc-item"><a href="#doc-boot-stage4-frame" class="toc-link"><span class="toc-title">Physical Memory Discovery & Frame Allocator</span><span class="toc-sub">UEFI memory map parser, 1 MiB low memory reservation, and 4 KiB frame allocator.</span></a></li>
+<li class="toc-item"><a href="#doc-boot-stage4-heap" class="toc-link"><span class="toc-title">Dynamic Kernel Heap & Global Allocator</span><span class="toc-sub">8 MiB dynamic heap allocator, #[global_allocator] implementation, and Rust alloc integration.</span></a></li>
 <li class="toc-stage-header">Stage 5: Virtual Memory</li>
 <li class="toc-item"><a href="#doc-boot-stage5-paging" class="toc-link"><span class="toc-title">4-Level Paging & Address Translation</span><span class="toc-sub">4-level x86_64 PML4 hierarchy, virtual address translation, and 2 MiB / 1 GiB huge pages.</span></a></li>
 <li class="toc-stage-header">Stage 6: Security & Capabilities</li>
@@ -461,6 +462,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">memory</span><span class="o">/</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">mod</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Memory management module root (src/memory/mod.rs)</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">frame_allocator</span><span class="o">.</span><span class="n">md</span><span class="w">     </span><span class="c1"># Physical memory manager &amp; 4 KiB frames (src/memory/frame_allocator.rs)</span>
+<span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">heap</span><span class="o">.</span><span class="n">md</span><span class="w">                </span><span class="c1"># Dynamic kernel heap allocator &amp; alloc crate (src/memory/heap.rs)</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">└──</span><span class="w"> </span><span class="n">paging</span><span class="o">.</span><span class="n">md</span><span class="w">              </span><span class="c1"># Virtual memory &amp; 4-level PML4 translation (src/memory/paging.rs)</span>
 <span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">capability</span><span class="o">/</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">mod</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Capability types &amp; Rights bitflags (src/capability/mod.rs)</span>
@@ -525,6 +527,12 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <td style="text-align: left;"><a href="file:///d:/os/src/memory/frame_allocator.rs"><code>src/memory/frame_allocator.rs</code></a></td>
 <td style="text-align: left;"><a href="#doc-boot-stage4-frame">docs/src/memory/frame_allocator.md</a></td>
 <td style="text-align: left;">UEFI memory map parsing, 4 KiB frame allocator ("parking lot attendant").</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Dynamic Heap</strong></td>
+<td style="text-align: left;"><a href="file:///d:/os/src/memory/heap.rs"><code>src/memory/heap.rs</code></a></td>
+<td style="text-align: left;"><a href="#doc-boot-stage4-heap">docs/src/memory/heap.md</a></td>
+<td style="text-align: left;">Dynamic kernel heap allocator, <code>#[global_allocator]</code>, <code>Box</code>/<code>Vec</code>/<code>String</code> support.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Virtual Memory</strong></td>
@@ -1066,6 +1074,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 <h2>2. Submodules</h2>
 <ul>
 <li><a href="#doc-boot-stage4-frame"><code>frame_allocator.rs</code></a>: Manages physical memory frames (4 KiB) discovered from the UEFI firmware memory map.</li>
+<li><a href="#doc-boot-stage4-heap"><code>heap.rs</code></a>: Dynamic kernel heap allocator and global allocator (<code>alloc</code> crate) providing <code>Box</code>, <code>Vec</code>, <code>String</code>.</li>
 <li><a href="#doc-boot-stage5-paging"><code>paging.rs</code></a>: Manages virtual memory address spaces and implements 4-level PML4 address translation.</li>
 </ul>
 </div>
@@ -1186,8 +1195,109 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 
+<div id="doc-boot-stage4-heap" class="doc-section">
+    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #11</div>
+    <h1>Dynamic Kernel Heap Allocator Documentation</h1>
+<ul>
+<li><strong>Source File</strong>: <a href="file:///d:/os/src/memory/heap.rs"><code>src/memory/heap.rs</code></a></li>
+<li><strong>Subsystem</strong>: Dynamic Memory Management &amp; Global Allocator (<code>alloc</code> crate)</li>
+</ul>
+<hr />
+<h2>1. Conceptual Overview</h2>
+<p>Operating system kernels initially boot in an environment where standard dynamic allocation (<code>malloc</code> or <code>new</code>) is unavailable. All structures must fit into static arrays or the stack.</p>
+<p>The <strong>Dynamic Kernel Heap Allocator</strong> bridges this gap:
+- It carves out a designated region of physical/virtual RAM (default: <strong>8 MiB</strong>, 2048 contiguous 4 KiB pages).
+- It binds this region to Rust's standard allocation interface via <code>#[global_allocator]</code>.
+- It enables the Rust <code>extern crate alloc;</code> library across the entire Hydra codebase, unlocking idiomatic heap collections: <code>Vec</code>, <code>String</code>, <code>Box</code>, <code>Arc</code>, and <code>BTreeMap</code>.</p>
+<hr />
+<h2>2. Allocation Architecture</h2>
+<div class="codehilite"><pre><span></span><code><span class="nf">graph</span><span class="w"> </span><span class="n">TD</span>
+<span class="w">    </span><span class="n">A</span><span class="p">[</span><span class="n">Hydra</span><span class="w"> </span><span class="n">Kernel</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">Subsystems</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">alloc</span><span class="o">::</span><span class="n">vec</span><span class="o">::</span><span class="n">Vec</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">Box</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">String</span><span class="o">|</span><span class="w"> </span><span class="n">B</span><span class="p">[</span><span class="n">Rust</span><span class="w"> </span><span class="n">Core</span><span class="w"> </span><span class="n">Allocator</span><span class="w"> </span><span class="n">API</span><span class="p">]</span>
+<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">GlobalAlloc</span><span class="w"> </span><span class="n">trait</span><span class="o">|</span><span class="w"> </span><span class="n">C</span><span class="p">[</span><span class="n">linked_list_allocator</span><span class="o">::</span><span class="n">LockedHeap</span><span class="p">]</span>
+<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">init</span><span class="w"> </span><span class="n">heap</span><span class="w"> </span><span class="n">pointer</span><span class="o">|</span><span class="w"> </span><span class="n">D</span><span class="p">[</span><span class="n">src</span><span class="o">/</span><span class="n">memory</span><span class="o">/</span><span class="n">heap</span><span class="p">.</span><span class="n">rs</span><span class="p">]</span>
+<span class="w">    </span><span class="n">D</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">Step</span><span class="w"> </span><span class="mi">1</span><span class="o">:</span><span class="w"> </span><span class="n">Try</span><span class="w"> </span><span class="n">Contiguous</span><span class="w"> </span><span class="n">Conventional</span><span class="w"> </span><span class="n">RAM</span><span class="o">|</span><span class="w"> </span><span class="n">E</span><span class="p">[</span><span class="n">src</span><span class="o">/</span><span class="n">memory</span><span class="o">/</span><span class="n">frame_allocator</span><span class="p">.</span><span class="n">rs</span><span class="p">]</span>
+<span class="w">    </span><span class="n">D</span><span class="w"> </span><span class="o">--&gt;|</span><span class="n">Step</span><span class="w"> </span><span class="mi">2</span><span class="o">:</span><span class="w"> </span><span class="n">Fallback</span><span class="o">|</span><span class="w"> </span><span class="n">F</span><span class="p">[</span><span class="n">uefi</span><span class="o">::</span><span class="n">boot</span><span class="o">::</span><span class="n">allocate_pages</span><span class="w"> </span><span class="n">LOADER_DATA</span><span class="p">]</span>
+</code></pre></div>
+
+<h3>Allocation Pipeline:</h3>
+<ol>
+<li><strong>Physical Backing Allocation</strong>:
+   - <code>heap::init()</code> requests a contiguous block of 2,048 physical 4 KiB frames from <code>FRAME_ALLOCATOR.lock().allocate_contiguous_frames(...)</code>.
+   - If not yet ready, it falls back to UEFI firmware <code>allocate_pages</code>.</li>
+<li><strong>Zero-Initialization</strong>:
+   - Memory is zero-cleared to avoid dirty residual data.</li>
+<li><strong>LinkedList Allocator Hookup</strong>:
+   - <code>HEAP_ALLOCATOR.lock().init(start_ptr, HEAP_SIZE)</code> configures the free-list structures.</li>
+<li><strong>Self-Test Verification</strong>:
+   - <code>heap::self_test()</code> validates <code>Box</code> allocation, multiple <code>Vec</code> capacity expansions, <code>alloc::format!</code> string formatting, and checks that memory is fully reclaimed upon RAII drops.</li>
+</ol>
+<hr />
+<h2>3. Public API Breakdown</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Function</th>
+<th style="text-align: left;">Signature</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>init()</code></td>
+<td style="text-align: left;"><code>fn() -&gt; Result&lt;HeapStats, &amp;'static str&gt;</code></td>
+<td style="text-align: left;">Initializes the global heap allocator using contiguous physical memory.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>is_initialized()</code></td>
+<td style="text-align: left;"><code>fn() -&gt; bool</code></td>
+<td style="text-align: left;">Checks if dynamic allocations are currently safe to execute.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>stats()</code></td>
+<td style="text-align: left;"><code>fn() -&gt; HeapStats</code></td>
+<td style="text-align: left;">Queries current heap metrics (start address, total bytes, used bytes, free bytes).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>self_test()</code></td>
+<td style="text-align: left;"><code>fn() -&gt; Result&lt;(), &amp;'static str&gt;</code></td>
+<td style="text-align: left;">Executes regression tests validating <code>Box</code>, <code>Vec</code>, <code>String</code>, and RAII deallocation without leaks.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>4. Interactive Shell Inspection</h2>
+<p>Hydra provides real-time shell commands to monitor and test the heap:</p>
+<div class="codehilite"><pre><span></span><code>hydra&gt; mem
+Physical Memory Manager Statistics:
+  Total Usable RAM:   ...
+Dynamic Kernel Heap Allocator:
+  Heap Status:        ONLINE
+  Start Address:      0x...
+  Total Heap Size:    8388608 bytes (8 MiB)
+  Used Heap Memory:   ...
+  Free Heap Memory:   ...
+
+hydra&gt; heap stats
+Dynamic Kernel Heap Statistics:
+  Status:             ONLINE
+  Base Physical/Virt: 0x...
+  Total Size:         8388608 bytes (8 MiB)
+  Heap Utilization:   0%
+
+hydra&gt; heap test
+[*] Running dynamic heap allocation self-test suite...
+[+] Heap self-test PASSED:
+    - Box&lt;u64&gt; heap allocation &amp; dereference verified
+    - Vec&lt;usize&gt; dynamic buffer reallocation (1,000 items) verified
+    - alloc::format! dynamic string verified
+    - RAII drop cleanup verified without memory leaks
+</code></pre></div>
+</div>
+
+
+
 <div id="doc-boot-stage5-paging" class="doc-section">
-    <div class="section-stage-badge">Stage 5: Virtual Memory &bull; Boot Sequence Order #11</div>
+    <div class="section-stage-badge">Stage 5: Virtual Memory &bull; Boot Sequence Order #12</div>
     <h1>Virtual Memory &amp; Paging Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/memory/paging.rs"><code>src/memory/paging.rs</code></a></li>
@@ -1273,7 +1383,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage6-cap-mod" class="doc-section">
-    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #12</div>
+    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #13</div>
     <h1>Capability Subsystem Overview</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/capability/mod.rs"><code>src/capability/mod.rs</code></a></li>
@@ -1384,7 +1494,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage6-cap-table" class="doc-section">
-    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #13</div>
+    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #14</div>
     <h1>Capability Table Module Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/capability/table.rs"><code>src/capability/table.rs</code></a></li>
@@ -1473,7 +1583,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage7-ipc-mod" class="doc-section">
-    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #14</div>
+    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #15</div>
     <h1>IPC Subsystem Overview</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/ipc/mod.rs"><code>src/ipc/mod.rs</code></a></li>
@@ -1501,7 +1611,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage7-ipc-msg" class="doc-section">
-    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #15</div>
+    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #16</div>
     <h1>IPC Message Module Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/ipc/message.rs"><code>src/ipc/message.rs</code></a></li>
@@ -1605,7 +1715,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage7-ipc-ep" class="doc-section">
-    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #16</div>
+    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #17</div>
     <h1>IPC Endpoint Module Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/ipc/endpoint.rs"><code>src/ipc/endpoint.rs</code></a></li>
@@ -1715,7 +1825,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage8-zfs" class="doc-section">
-    <div class="section-stage-badge">Stage 8: File Server & Storage &bull; Boot Sequence Order #17</div>
+    <div class="section-stage-badge">Stage 8: File Server & Storage &bull; Boot Sequence Order #18</div>
     <h1>ZFS Microkernel File Server Documentation</h1>
 <ul>
 <li><strong>Source Directory</strong>: <a href="file:///d:/os/src/fs/zfs/"><code>src/fs/zfs/</code></a> &amp; <a href="file:///d:/os/src/fs/client.rs"><code>src/fs/client.rs</code></a></li>
@@ -1893,7 +2003,7 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 
 
 <div id="doc-boot-stage9-shell" class="doc-section">
-    <div class="section-stage-badge">Stage 9: Interactive Shell &bull; Boot Sequence Order #18</div>
+    <div class="section-stage-badge">Stage 9: Interactive Shell &bull; Boot Sequence Order #19</div>
     <h1>Interactive Microkernel Shell Documentation</h1>
 <ul>
 <li><strong>Source Directory</strong>: <a href="file:///d:/os/src/shell/"><code>src/shell/</code></a></li>

@@ -38,7 +38,7 @@ pub use help::HelpCommand;
 pub use history_cmd::HistoryCommand;
 pub use info::InfoCommand;
 pub use ipc::IpcCommand;
-pub use mem::{AllocCommand, MemCommand};
+pub use mem::{AllocCommand, HeapCommand, MemCommand};
 pub use misc::{ClearCommand, ColorCommand, EchoCommand, PanicCommand, ScrollLockCommand};
 pub use power::{HaltCommand, RebootCommand, ShutdownCommand};
 pub use script::ShCommand;
@@ -96,6 +96,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &CpuCommand,
     &MemCommand,
     &AllocCommand,
+    &HeapCommand,
     &TranslateCommand,
     &CapsCommand,
     &CapInsertCommand,

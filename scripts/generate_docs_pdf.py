@@ -109,6 +109,13 @@ DOCS_ORDER = [
         "subtitle": "UEFI memory map parser, 1 MiB low memory reservation, and 4 KiB frame allocator.",
     },
     {
+        "stage": "Stage 4: Memory Subsystem",
+        "title": "Dynamic Kernel Heap & Global Allocator",
+        "file": "docs/src/memory/heap.md",
+        "anchor": "doc-boot-stage4-heap",
+        "subtitle": "8 MiB dynamic heap allocator, #[global_allocator] implementation, and Rust alloc integration.",
+    },
+    {
         "stage": "Stage 5: Virtual Memory",
         "title": "4-Level Paging & Address Translation",
         "file": "docs/src/memory/paging.md",

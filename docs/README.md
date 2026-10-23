@@ -22,6 +22,7 @@ docs/
     ├── memory/
     │   ├── mod.md                 # Memory management module root (src/memory/mod.rs)
     │   ├── frame_allocator.md     # Physical memory manager & 4 KiB frames (src/memory/frame_allocator.rs)
+    │   ├── heap.md                # Dynamic kernel heap allocator & alloc crate (src/memory/heap.rs)
     │   └── paging.md              # Virtual memory & 4-level PML4 translation (src/memory/paging.rs)
     ├── capability/
     │   ├── mod.md                 # Capability types & Rights bitflags (src/capability/mod.rs)
@@ -46,6 +47,7 @@ docs/
 | **CPU Control** | [`src/arch/cpu.rs`](file:///d:/os/src/arch/cpu.rs) | [docs/src/arch/cpu.md](file:///d:/os/docs/src/arch/cpu.md) | Control registers (`CR0`, `CR2`, `CR3`, `CR4`), paging roots. |
 | **Arch Root** | [`src/arch/mod.rs`](file:///d:/os/src/arch/mod.rs) | [docs/src/arch/mod.md](file:///d:/os/docs/src/arch/mod.md) | Architecture abstraction layer for hardware independence. |
 | **Physical Memory**| [`src/memory/frame_allocator.rs`](file:///d:/os/src/memory/frame_allocator.rs) | [docs/src/memory/frame_allocator.md](file:///d:/os/docs/src/memory/frame_allocator.md) | UEFI memory map parsing, 4 KiB frame allocator ("parking lot attendant"). |
+| **Dynamic Heap** | [`src/memory/heap.rs`](file:///d:/os/src/memory/heap.rs) | [docs/src/memory/heap.md](file:///d:/os/docs/src/memory/heap.md) | Dynamic kernel heap allocator, `#[global_allocator]`, `Box`/`Vec`/`String` support. |
 | **Virtual Memory** | [`src/memory/paging.rs`](file:///d:/os/src/memory/paging.rs) | [docs/src/memory/paging.md](file:///d:/os/docs/src/memory/paging.md) | 4-level x86_64 paging tree (PML4), address translation, page protection. |
 | **Memory Root** | [`src/memory/mod.rs`](file:///d:/os/src/memory/mod.rs) | [docs/src/memory/mod.md](file:///d:/os/docs/src/memory/mod.md) | Physical and virtual memory coordinator. |
 | **Capability Core**| [`src/capability/mod.rs`](file:///d:/os/src/capability/mod.rs) | [docs/src/capability/mod.md](file:///d:/os/docs/src/capability/mod.md) | Security keycards (`Rights::READ`, `WRITE`, `EXECUTE`, `GRANT`, `CALL`). |

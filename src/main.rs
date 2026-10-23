@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
 pub mod arch;
 pub mod capability;
 #[macro_use]
@@ -81,6 +83,35 @@ fn main() -> Status {
             frame.start_address().as_u64()
         );
     }
+
+    // 3b. Dynamic Kernel Heap Allocator Setup
+    console::set_color(Color::Yellow, Color::Black);
+    println!("\n[*] Step 2b: Initializing Dynamic Kernel Heap Allocator...");
+    match memory::heap::init() {
+        Ok(stats) => {
+            console::set_color(Color::LightGreen, Color::Black);
+            println!("[+] Kernel Heap Online:");
+            println!("    - Start Address: {:#x}", stats.start_address);
+            println!(
+                "    - Total Size:    {} MiB ({} bytes)",
+                stats.total_bytes / (1024 * 1024),
+                stats.total_bytes
+            );
+            println!("    - Available:     {} MiB", stats.free_bytes / (1024 * 1024));
+
+            if let Err(e) = memory::heap::self_test() {
+                console::set_color(Color::LightRed, Color::Black);
+                println!("[!] Heap Self-Test Failed: {}", e);
+            } else {
+                println!("    - Self-Test:     PASSED (Box, Vec, String, RAII drops verified)");
+            }
+        }
+        Err(e) => {
+            console::set_color(Color::LightRed, Color::Black);
+            println!("[!] Failed to initialize kernel heap: {}", e);
+        }
+    }
+
 
     // 4. Virtual Memory & 4-Level Page Table Translation
     console::set_color(Color::Yellow, Color::Black);
