@@ -1305,13 +1305,13 @@ hydra&gt; heap test
 </ul>
 <hr />
 <h2>1. Conceptual Overview</h2>
-<p>Modern 64-bit CPUs do not let user programs or even high-level kernel functions read and write directly to physical RAM chips. Instead, they use <strong>Virtual Memory</strong>.</p>
+<p>Modern 64-bit CPUs do not let user programs or high-level kernel functions read and write directly to physical RAM chips. Instead, they use <strong>Virtual Memory</strong>.</p>
 <p>Every address a program interacts with is a <strong>Virtual Address</strong>. The hardware Memory Management Unit (MMU) consults a multi-level tree of translation tables (called <strong>Page Tables</strong>) to convert that virtual address into a <strong>Physical Address</strong> in RAM.</p>
 <h3>Benefits of Paging</h3>
 <ol>
 <li><strong>Isolation</strong>: Process A and Process B can both have code at virtual address <code>0x400000</code>, but they map to completely different physical RAM chips.</li>
 <li><strong>Protection</strong>: Pages can be marked read-only, non-executable (NX/XD bit to prevent malware buffer-overflow attacks), or kernel-only.</li>
-<li><strong>Continuity</strong>: Large arrays can appear contiguous in virtual memory even if their physical frames are scattered across RAM.</li>
+<li><strong>Continuity</strong>: Large buffers appear contiguous in virtual memory even if physical frames are scattered across RAM.</li>
 </ol>
 <hr />
 <h2>2. 4-Level Paging Architecture (x86_64)</h2>
@@ -1346,37 +1346,92 @@ hydra&gt; heap test
 <p>Represents a virtual memory context anchored by its PML4 root table.</p>
 <hr />
 <h2>4. API Reference &amp; Methods</h2>
-<h3><code>AddressSpace::active() -&gt; Self</code></h3>
-<p>Reads the CPU's <code>CR3</code> register to attach to the currently running address space.</p>
-<div class="codehilite"><pre><span></span><code><span class="kd">let</span><span class="w"> </span><span class="n">active_space</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">AddressSpace</span><span class="p">::</span><span class="n">active</span><span class="p">();</span>
-</code></pre></div>
-
-<h3><code>AddressSpace::pml4_physical_address(&amp;self) -&gt; PhysAddr</code></h3>
-<p>Returns the physical address of the Level 4 Page Table.</p>
-<h3><code>AddressSpace::table_at&lt;'a&gt;(&amp;self, phys: PhysAddr) -&gt; &amp;'a PageTable</code></h3>
-<p><em>(Unsafe)</em> Dereferences a physical address as an active <code>PageTable</code> reference. In native 64-bit UEFI environments, memory is identity-mapped, allowing direct address dereferencing during bootstrap.</p>
-<h3><code>AddressSpace::translate_addr(&amp;self, addr: VirtAddr) -&gt; Option&lt;PhysAddr&gt;</code></h3>
-<p>Walks the 4-level page table hierarchy for a given virtual address:
-1. Checks PML4 entry for <code>PRESENT</code>.
-2. Checks PDPT entry for <code>PRESENT</code> and handles 1 GiB huge pages.
-3. Checks PD entry for <code>PRESENT</code> and handles 2 MiB huge pages.
-4. Checks PT entry for <code>PRESENT</code>.
-5. Extracts the physical frame base and adds the 12-bit offset (<code>0..4095</code>).
-- Returns <code>Some(PhysAddr)</code> if the address is currently mapped.
-- Returns <code>None</code> if any table level in the walk is unmapped.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Method</th>
+<th style="text-align: left;">Signature</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>active()</code></td>
+<td style="text-align: left;"><code>fn() -&gt; Self</code></td>
+<td style="text-align: left;">Attaches to the active address space by reading <code>CR3</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>from_pml4()</code></td>
+<td style="text-align: left;"><code>const fn(PhysAddr) -&gt; Self</code></td>
+<td style="text-align: left;">Creates an address space handle for a given root PML4 table.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>switch()</code></td>
+<td style="text-align: left;"><code>unsafe fn(&amp;self)</code></td>
+<td style="text-align: left;">Reloads the CPU's <code>CR3</code> register with this address space's PML4 root.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>translate_addr()</code></td>
+<td style="text-align: left;"><code>unsafe fn(&amp;self, VirtAddr) -&gt; Option&lt;PhysAddr&gt;</code></td>
+<td style="text-align: left;">Walks PML4 hierarchy to translate any virtual address to its physical address.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>translate_page()</code></td>
+<td style="text-align: left;"><code>unsafe fn(&amp;self, Page) -&gt; Option&lt;(PhysFrame, PageTableFlags)&gt;</code></td>
+<td style="text-align: left;">Queries mapped frame and protection flags (<code>PRESENT</code>, <code>WRITABLE</code>, <code>USER</code>, <code>NX</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>map_page()</code></td>
+<td style="text-align: left;"><code>unsafe fn(&amp;mut self, Page, PhysFrame, PageTableFlags, &amp;mut PhysicalMemoryManager) -&gt; Result&lt;(), &amp;'static str&gt;</code></td>
+<td style="text-align: left;">Allocates missing intermediate tables (PDPT, PD, PT) on demand, maps a 4 KiB page, and flushes the TLB.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>unmap_page()</code></td>
+<td style="text-align: left;"><code>unsafe fn(&amp;mut self, Page) -&gt; Result&lt;PhysFrame, &amp;'static str&gt;</code></td>
+<td style="text-align: left;">Clears the page table entry, flushes the TLB via <code>invlpg</code>, and returns the previously mapped frame.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>update_flags()</code></td>
+<td style="text-align: left;"><code>unsafe fn(&amp;mut self, Page, PageTableFlags) -&gt; Result&lt;(), &amp;'static str&gt;</code></td>
+<td style="text-align: left;">Updates protection bits for an existing mapped page and invalidates TLB.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>identity_map()</code></td>
+<td style="text-align: left;"><code>unsafe fn(&amp;mut self, PhysFrame, PageTableFlags, &amp;mut PhysicalMemoryManager) -&gt; Result&lt;(), &amp;'static str&gt;</code></td>
+<td style="text-align: left;">Maps a physical frame 1:1 (<code>virt = phys</code>), essential for MMIO (APIC, GOP framebuffer).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>map_range()</code></td>
+<td style="text-align: left;"><code>unsafe fn(&amp;mut self, Page, PhysFrame, usize, PageTableFlags, &amp;mut PhysicalMemoryManager) -&gt; Result&lt;(), &amp;'static str&gt;</code></td>
+<td style="text-align: left;">Maps a contiguous sequence of virtual pages to physical frames.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>create_user_space()</code></td>
+<td style="text-align: left;"><code>fn(&amp;mut PhysicalMemoryManager) -&gt; Result&lt;Self, &amp;'static str&gt;</code></td>
+<td style="text-align: left;">Allocates a new PML4 table, mirrors higher-half kernel entries, and leaves lower-half empty for isolated Ring 3 user tasks.</td>
+</tr>
+</tbody>
+</table>
 <hr />
-<h2>5. Practical Example</h2>
-<div class="codehilite"><pre><span></span><code><span class="k">use</span><span class="w"> </span><span class="k">crate</span><span class="p">::</span><span class="n">memory</span><span class="p">::</span><span class="n">paging</span><span class="p">::</span><span class="n">AddressSpace</span><span class="p">;</span>
-<span class="k">use</span><span class="w"> </span><span class="n">x86_64</span><span class="p">::</span><span class="n">VirtAddr</span><span class="p">;</span>
+<h2>5. Interactive Shell Commands</h2>
+<p>Hydra provides built-in commands to inspect and modify virtual memory mappings dynamically:</p>
+<div class="codehilite"><pre><span></span><code>hydra&gt; translate 0x400000
+4-Level PML4 Page Table Walk for 0x400000:
+  PML4 Index (L4):    0
+  PDPT Index (L3):    0
+  PD Index   (L2):    2
+  PT Index   (L1):    0
+  Page Offset:        0x0
+  Status:             MAPPED
+  Physical Target:    0x400000
+  Base Frame:         0x400000
+  Protection Flags:   [PRESENT] [WRITABLE] [SUPERVISOR/RING-0] [EXECUTABLE]
 
-<span class="kd">let</span><span class="w"> </span><span class="n">space</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">AddressSpace</span><span class="p">::</span><span class="n">active</span><span class="p">();</span>
-<span class="kd">let</span><span class="w"> </span><span class="n">virt_ptr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">VirtAddr</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="mh">0x1000_5000</span><span class="p">);</span>
+hydra&gt; map 0x7000000000 0x1000000 rw
+[+] Successfully mapped Page 0x7000000000 -&gt; Frame 0x1000000 (flags: PageTableFlags(PRESENT | WRITABLE))
 
-<span class="c1">// Translate to physical address:</span>
-<span class="k">match</span><span class="w"> </span><span class="k">unsafe</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">space</span><span class="p">.</span><span class="n">translate_addr</span><span class="p">(</span><span class="n">virt_ptr</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nb">Some</span><span class="p">(</span><span class="n">phys</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="fm">println!</span><span class="p">(</span><span class="s">"Virtual {:?} maps to Physical {:?}"</span><span class="p">,</span><span class="w"> </span><span class="n">virt_ptr</span><span class="p">,</span><span class="w"> </span><span class="n">phys</span><span class="p">),</span>
-<span class="w">    </span><span class="nb">None</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="fm">println!</span><span class="p">(</span><span class="s">"Virtual {:?} is not mapped in this address space"</span><span class="p">,</span><span class="w"> </span><span class="n">virt_ptr</span><span class="p">),</span>
-<span class="p">}</span>
+hydra&gt; unmap 0x7000000000
+[+] Successfully unmapped Page 0x7000000000 (previously mapped to Frame 0x1000000)
 </code></pre></div>
 </div>
 

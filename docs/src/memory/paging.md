@@ -7,14 +7,14 @@
 
 ## 1. Conceptual Overview
 
-Modern 64-bit CPUs do not let user programs or even high-level kernel functions read and write directly to physical RAM chips. Instead, they use **Virtual Memory**.
+Modern 64-bit CPUs do not let user programs or high-level kernel functions read and write directly to physical RAM chips. Instead, they use **Virtual Memory**.
 
 Every address a program interacts with is a **Virtual Address**. The hardware Memory Management Unit (MMU) consults a multi-level tree of translation tables (called **Page Tables**) to convert that virtual address into a **Physical Address** in RAM.
 
 ### Benefits of Paging
 1. **Isolation**: Process A and Process B can both have code at virtual address `0x400000`, but they map to completely different physical RAM chips.
 2. **Protection**: Pages can be marked read-only, non-executable (NX/XD bit to prevent malware buffer-overflow attacks), or kernel-only.
-3. **Continuity**: Large arrays can appear contiguous in virtual memory even if their physical frames are scattered across RAM.
+3. **Continuity**: Large buffers appear contiguous in virtual memory even if physical frames are scattered across RAM.
 
 ---
 
@@ -58,43 +58,42 @@ Represents a virtual memory context anchored by its PML4 root table.
 
 ## 4. API Reference & Methods
 
-### `AddressSpace::active() -> Self`
-Reads the CPU's `CR3` register to attach to the currently running address space.
-
-```rust
-let active_space = AddressSpace::active();
-```
-
-### `AddressSpace::pml4_physical_address(&self) -> PhysAddr`
-Returns the physical address of the Level 4 Page Table.
-
-### `AddressSpace::table_at<'a>(&self, phys: PhysAddr) -> &'a PageTable`
-*(Unsafe)* Dereferences a physical address as an active `PageTable` reference. In native 64-bit UEFI environments, memory is identity-mapped, allowing direct address dereferencing during bootstrap.
-
-### `AddressSpace::translate_addr(&self, addr: VirtAddr) -> Option<PhysAddr>`
-Walks the 4-level page table hierarchy for a given virtual address:
-1. Checks PML4 entry for `PRESENT`.
-2. Checks PDPT entry for `PRESENT` and handles 1 GiB huge pages.
-3. Checks PD entry for `PRESENT` and handles 2 MiB huge pages.
-4. Checks PT entry for `PRESENT`.
-5. Extracts the physical frame base and adds the 12-bit offset (`0..4095`).
-- Returns `Some(PhysAddr)` if the address is currently mapped.
-- Returns `None` if any table level in the walk is unmapped.
+| Method | Signature | Description |
+| :--- | :--- | :--- |
+| `active()` | `fn() -> Self` | Attaches to the active address space by reading `CR3`. |
+| `from_pml4()` | `const fn(PhysAddr) -> Self` | Creates an address space handle for a given root PML4 table. |
+| `switch()` | `unsafe fn(&self)` | Reloads the CPU's `CR3` register with this address space's PML4 root. |
+| `translate_addr()` | `unsafe fn(&self, VirtAddr) -> Option<PhysAddr>` | Walks PML4 hierarchy to translate any virtual address to its physical address. |
+| `translate_page()` | `unsafe fn(&self, Page) -> Option<(PhysFrame, PageTableFlags)>` | Queries mapped frame and protection flags (`PRESENT`, `WRITABLE`, `USER`, `NX`). |
+| `map_page()` | `unsafe fn(&mut self, Page, PhysFrame, PageTableFlags, &mut PhysicalMemoryManager) -> Result<(), &'static str>` | Allocates missing intermediate tables (PDPT, PD, PT) on demand, maps a 4 KiB page, and flushes the TLB. |
+| `unmap_page()` | `unsafe fn(&mut self, Page) -> Result<PhysFrame, &'static str>` | Clears the page table entry, flushes the TLB via `invlpg`, and returns the previously mapped frame. |
+| `update_flags()` | `unsafe fn(&mut self, Page, PageTableFlags) -> Result<(), &'static str>` | Updates protection bits for an existing mapped page and invalidates TLB. |
+| `identity_map()` | `unsafe fn(&mut self, PhysFrame, PageTableFlags, &mut PhysicalMemoryManager) -> Result<(), &'static str>` | Maps a physical frame 1:1 (`virt = phys`), essential for MMIO (APIC, GOP framebuffer). |
+| `map_range()` | `unsafe fn(&mut self, Page, PhysFrame, usize, PageTableFlags, &mut PhysicalMemoryManager) -> Result<(), &'static str>` | Maps a contiguous sequence of virtual pages to physical frames. |
+| `create_user_space()`| `fn(&mut PhysicalMemoryManager) -> Result<Self, &'static str>` | Allocates a new PML4 table, mirrors higher-half kernel entries, and leaves lower-half empty for isolated Ring 3 user tasks. |
 
 ---
 
-## 5. Practical Example
+## 5. Interactive Shell Commands
 
-```rust
-use crate::memory::paging::AddressSpace;
-use x86_64::VirtAddr;
+Hydra provides built-in commands to inspect and modify virtual memory mappings dynamically:
 
-let space = AddressSpace::active();
-let virt_ptr = VirtAddr::new(0x1000_5000);
+```text
+hydra> translate 0x400000
+4-Level PML4 Page Table Walk for 0x400000:
+  PML4 Index (L4):    0
+  PDPT Index (L3):    0
+  PD Index   (L2):    2
+  PT Index   (L1):    0
+  Page Offset:        0x0
+  Status:             MAPPED
+  Physical Target:    0x400000
+  Base Frame:         0x400000
+  Protection Flags:   [PRESENT] [WRITABLE] [SUPERVISOR/RING-0] [EXECUTABLE]
 
-// Translate to physical address:
-match unsafe { space.translate_addr(virt_ptr) } {
-    Some(phys) => println!("Virtual {:?} maps to Physical {:?}", virt_ptr, phys),
-    None => println!("Virtual {:?} is not mapped in this address space", virt_ptr),
-}
+hydra> map 0x7000000000 0x1000000 rw
+[+] Successfully mapped Page 0x7000000000 -> Frame 0x1000000 (flags: PageTableFlags(PRESENT | WRITABLE))
+
+hydra> unmap 0x7000000000
+[+] Successfully unmapped Page 0x7000000000 (previously mapped to Frame 0x1000000)
 ```

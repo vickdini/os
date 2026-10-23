@@ -44,7 +44,7 @@ pub use power::{HaltCommand, RebootCommand, ShutdownCommand};
 pub use script::ShCommand;
 pub use status::StatusCommand;
 pub use time::TimeCommand;
-pub use translate::TranslateCommand;
+pub use translate::{MapCommand, TranslateCommand, UnmapCommand};
 pub use zfs_cmds::{ZfsCommand, ZpoolCommand};
 
 /// Static registry of all built-in commands and integrated programs.
@@ -98,6 +98,8 @@ pub static COMMANDS: &[&dyn Command] = &[
     &AllocCommand,
     &HeapCommand,
     &TranslateCommand,
+    &MapCommand,
+    &UnmapCommand,
     &CapsCommand,
     &CapInsertCommand,
     &CapRevokeCommand,

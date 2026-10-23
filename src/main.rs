@@ -113,25 +113,78 @@ fn main() -> Status {
     }
 
 
-    // 4. Virtual Memory & 4-Level Page Table Translation
+    // 4. Virtual Memory: 4-Level Paging (PML4) & Autonomous Kernel Address Space
     console::set_color(Color::Yellow, Color::Black);
-    println!("\n[*] Step 3: Verifying 4-Level Paging (PML4) Address Translation...");
-    let address_space = memory::paging::AddressSpace::active();
+    println!("\n[*] Step 3: Initializing Autonomous 4-Level Paging (PML4)...");
+    let active_space = memory::paging::AddressSpace::active();
     let sample_virt = VirtAddr::new(main as *const () as usize as u64);
-    let sample_phys = unsafe { address_space.translate_addr(sample_virt) };
+    let sample_phys = unsafe { active_space.translate_addr(sample_virt) };
     console::set_color(Color::LightGreen, Color::Black);
     if let Some(phys) = sample_phys {
         println!(
-            "[+] Translated VirtAddr {:#x} -> PhysAddr {:#x}",
+            "[+] Firmware Boot Translation: VirtAddr {:#x} -> PhysAddr {:#x}",
             sample_virt.as_u64(),
             phys.as_u64()
         );
-    } else {
-        println!(
-            "[+] VirtAddr {:#x} translation: Identity/Mapped",
-            sample_virt.as_u64()
-        );
     }
+
+    // Allocate Hydra's own PML4 table in conventional memory (owned by the OS)
+    let kernel_space_res = {
+        let mut alloc = memory::frame_allocator::FRAME_ALLOCATOR.lock();
+        memory::paging::init_kernel_space(&mut alloc)
+    };
+
+    match kernel_space_res {
+        Ok(pml4_phys) => {
+            println!(
+                "[+] Hydra Autonomous PML4 Root Initialized at PhysAddr {:#x}",
+                pml4_phys.as_u64()
+            );
+
+            // Test dynamic page mapping & unmapping on Hydra's autonomous address space
+            let mut guard = memory::paging::KERNEL_SPACE.lock();
+            if let Some(ref mut space) = *guard {
+                let test_map_frame = {
+                    let mut alloc = memory::frame_allocator::FRAME_ALLOCATOR.lock();
+                    alloc.allocate_frame()
+                };
+
+                if let Some(frame) = test_map_frame {
+                    use x86_64::structures::paging::{Page, PageTableFlags};
+                    let test_page = Page::containing_address(VirtAddr::new(0x0000_7000_0000_0000));
+                    let map_res = unsafe {
+                        let mut alloc = memory::frame_allocator::FRAME_ALLOCATOR.lock();
+                        space.map_page(
+                            test_page,
+                            frame,
+                            PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
+                            &mut alloc,
+                        )
+                    };
+
+                    if map_res.is_ok() {
+                        let (mapped_frame, flags) = unsafe { space.translate_page(test_page) }.unwrap();
+                        println!(
+                            "[+] Dynamic Page Mapping: Page {:#x} -> Frame {:#x} (flags: {:?})",
+                            test_page.start_address().as_u64(),
+                            mapped_frame.start_address().as_u64(),
+                            flags
+                        );
+
+                        let unmap_res = unsafe { space.unmap_page(test_page) };
+                        if unmap_res.is_ok() {
+                            println!("    - Dynamic Unmap & TLB Invalidation: PASSED");
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            console::set_color(Color::LightRed, Color::Black);
+            println!("[!] Failed to initialize autonomous PML4: {}", e);
+        }
+    }
+
 
     // 5. Capability-Based Security Model
     console::set_color(Color::Yellow, Color::Black);
