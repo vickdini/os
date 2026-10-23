@@ -244,13 +244,35 @@ pub fn probe_scancode(s: ScanCode) -> u16 {
 }
 
 pub fn screen_size() -> (usize, usize) {
-    uefi::system::with_stdout(|stdout| {
-        if let Ok(Some(mode)) = stdout.current_mode() {
-            (mode.columns(), mode.rows())
-        } else {
-            (80, 25)
-        }
-    })
+    if is_standalone_video() {
+        crate::video::console::dimensions()
+    } else {
+        uefi::system::with_stdout(|stdout| {
+            if let Ok(Some(mode)) = stdout.current_mode() {
+                (mode.columns(), mode.rows())
+            } else {
+                (80, 25)
+            }
+        })
+    }
+}
+
+pub fn cursor_position() -> (usize, usize) {
+    if is_standalone_video() {
+        crate::video::console::cursor_position()
+    } else {
+        uefi::system::with_stdout(|stdout| stdout.cursor_position())
+    }
+}
+
+pub fn set_cursor_position(col: usize, row: usize) {
+    if is_standalone_video() {
+        crate::video::console::set_cursor_position(col, row);
+    } else {
+        uefi::system::with_stdout(|stdout| {
+            let _ = stdout.set_cursor_position(col, row);
+        });
+    }
 }
 
 #[macro_export]
@@ -272,11 +294,25 @@ pub fn _print(args: fmt::Arguments) {
     let _ = console.write_fmt(args);
 }
 
-/// Polls for a key from UEFI stdin without blocking.
+static HARDWARE_MODE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+pub fn set_hardware_mode(enabled: bool) {
+    HARDWARE_MODE.store(enabled, core::sync::atomic::Ordering::SeqCst);
+}
+
+pub fn is_hardware_mode() -> bool {
+    HARDWARE_MODE.load(core::sync::atomic::Ordering::SeqCst)
+}
+
+/// Polls for a key without blocking (from PS/2 keyboard in hardware mode, or UEFI stdin).
 pub fn read_key() -> Option<Key> {
-    uefi::system::with_stdin(|stdin| {
-        stdin.read_key().unwrap_or(None)
-    })
+    if is_hardware_mode() {
+        crate::arch::keyboard::read_key()
+    } else {
+        uefi::system::with_stdin(|stdin| {
+            stdin.read_key().unwrap_or(None)
+        })
+    }
 }
 
 /// Checks non-blockingly whether Ctrl+C (ASCII 3) or Ctrl+\ (ASCII 28) was pressed to interrupt execution.
@@ -291,27 +327,51 @@ pub fn check_interrupt() -> bool {
     }
 }
 
-/// Waits until a key is pressed from UEFI stdin.
-pub fn get_key() -> Key {
-    loop {
-        if let Some(key) = read_key() {
-            return key;
+/// Delays execution for the specified duration.
+/// In UEFI mode, calls `uefi::boot::stall`.
+/// In standalone hardware mode, uses a spin loop calibrated against RDTSC.
+pub fn stall(duration: Duration) {
+    if is_hardware_mode() {
+        let nanos = duration.as_nanos();
+        let cycles = (nanos as u64).saturating_mul(2);
+        let start = unsafe { core::arch::x86_64::_rdtsc() };
+        while unsafe { core::arch::x86_64::_rdtsc() }.wrapping_sub(start) < cycles {
+            core::hint::spin_loop();
         }
-        // Yield to firmware / VM timer with a 10ms stall to avoid pegging CPU
-        uefi::boot::stall(Duration::from_millis(10));
+    } else {
+        uefi::boot::stall(duration);
+    }
+}
+
+/// Waits until a key is pressed (from PS/2 keyboard in hardware mode, or UEFI stdin).
+pub fn get_key() -> Key {
+    if is_hardware_mode() {
+        crate::arch::keyboard::get_key()
+    } else {
+        loop {
+            if let Some(key) = read_key() {
+                return key;
+            }
+            // Yield to firmware / VM timer with a 10ms stall to avoid pegging CPU
+            stall(Duration::from_millis(10));
+        }
     }
 }
 
 /// Erases the character preceding the cursor on the screen.
 pub fn backspace() {
-    uefi::system::with_stdout(|stdout| {
-        let (col, row) = stdout.cursor_position();
-        if col > 0 {
-            let _ = stdout.set_cursor_position(col - 1, row);
-            let _ = stdout.write_str(" ");
-            let _ = stdout.set_cursor_position(col - 1, row);
-        }
-    });
+    if is_standalone_video() {
+        crate::video::console::write_str("\x08");
+    } else {
+        uefi::system::with_stdout(|stdout| {
+            let (col, row) = stdout.cursor_position();
+            if col > 0 {
+                let _ = stdout.set_cursor_position(col - 1, row);
+                let _ = stdout.write_str(" ");
+                let _ = stdout.set_cursor_position(col - 1, row);
+            }
+        });
+    }
 }
 
 /// Reads a line of ASCII text interactively from the console into `buf`.
@@ -398,6 +458,26 @@ pub fn max_scroll_offset() -> usize {
     total.saturating_sub(rows.saturating_sub(1))
 }
 
+fn write_viewport_str(s: &str) {
+    if is_standalone_video() {
+        crate::video::console::write_str(s);
+    } else {
+        uefi::system::with_stdout(|stdout| {
+            let _ = stdout.write_str(s);
+        });
+    }
+}
+
+fn set_viewport_color(fg: Color, bg: Color) {
+    if is_standalone_video() {
+        crate::video::console::set_colors(color_to_rgb(fg), color_to_rgb(bg));
+    } else {
+        uefi::system::with_stdout(|stdout| {
+            let _ = stdout.set_color(fg, bg);
+        });
+    }
+}
+
 fn render_formatted_line(line: &[u8], attrs: &[u8]) {
     let len = line.len();
     if len == 0 {
@@ -414,19 +494,15 @@ fn render_formatted_line(line: &[u8], attrs: &[u8]) {
 
         let fg = u8_to_color(current_attr);
         let bg = u8_to_bg_color(current_attr);
-        uefi::system::with_stdout(|stdout| {
-            let _ = stdout.set_color(fg, bg);
-            if let Ok(segment) = core::str::from_utf8(&line[start..end]) {
-                let _ = stdout.write_str(segment);
-            }
-        });
+        set_viewport_color(fg, bg);
+        if let Ok(segment) = core::str::from_utf8(&line[start..end]) {
+            write_viewport_str(segment);
+        }
 
         start = end;
     }
     // Restore default text colors
-    uefi::system::with_stdout(|stdout| {
-        let _ = stdout.set_color(Color::White, Color::Black);
-    });
+    set_viewport_color(Color::White, Color::Black);
 }
 
 fn format_scroll_status<'a>(buf: &'a mut [u8], top: usize, bottom: usize, total: usize, offset: usize) -> &'a str {
@@ -481,26 +557,20 @@ pub fn draw_scroll_viewport(
         for i in top..total {
             if let Some(len) = console.scrollback.get_line_with_attrs(i, &mut line_buf, &mut attr_buf) {
                 render_formatted_line(&line_buf[..len], &attr_buf[..len]);
-                uefi::system::with_stdout(|stdout| {
-                    let _ = stdout.write_str("\r\n");
-                });
+                write_viewport_str("\r\n");
             } else {
-                uefi::system::with_stdout(|stdout| {
-                    let _ = stdout.write_str("\r\n");
-                });
+                write_viewport_str("\r\n");
             }
         }
 
         // Draw active prompt on bottom line
-        uefi::system::with_stdout(|stdout| {
-            let _ = stdout.set_color(prompt_color, Color::Black);
-            let _ = stdout.write_str(prompt);
-            let _ = stdout.set_color(Color::White, Color::Black);
-            let _ = stdout.write_str(line_text);
-            let (cur_col, cur_row) = stdout.cursor_position();
-            let prompt_col = cur_col.saturating_sub(line_text.len());
-            let _ = stdout.set_cursor_position(prompt_col + cursor_pos, cur_row);
-        });
+        set_viewport_color(prompt_color, Color::Black);
+        write_viewport_str(prompt);
+        set_viewport_color(Color::White, Color::Black);
+        write_viewport_str(line_text);
+        let (cur_col, cur_row) = cursor_position();
+        let prompt_col = cur_col.saturating_sub(line_text.len());
+        set_cursor_position(prompt_col + cursor_pos, cur_row);
     } else {
         // Scrolled up into history
         let bottom = total.saturating_sub(offset);
@@ -509,31 +579,23 @@ pub fn draw_scroll_viewport(
         for i in top..bottom {
             if let Some(len) = console.scrollback.get_line_with_attrs(i, &mut line_buf, &mut attr_buf) {
                 render_formatted_line(&line_buf[..len], &attr_buf[..len]);
-                uefi::system::with_stdout(|stdout| {
-                    let _ = stdout.write_str("\r\n");
-                });
+                write_viewport_str("\r\n");
             } else {
-                uefi::system::with_stdout(|stdout| {
-                    let _ = stdout.write_str("\r\n");
-                });
+                write_viewport_str("\r\n");
             }
         }
 
         for _ in (bottom - top)..visible_rows {
-            uefi::system::with_stdout(|stdout| {
-                let _ = stdout.write_str("\r\n");
-            });
+            write_viewport_str("\r\n");
         }
 
         // Status line on the bottom row
         let display_top = if bottom == 0 { 0 } else { top + 1 };
-        uefi::system::with_stdout(|stdout| {
-            let _ = stdout.set_color(Color::Black, Color::Cyan);
-            let mut num_buf = [0u8; 96];
-            let status = format_scroll_status(&mut num_buf, display_top, bottom, total, offset);
-            let _ = stdout.write_str(status);
-            let _ = stdout.set_color(Color::White, Color::Black);
-        });
+        set_viewport_color(Color::Black, Color::Cyan);
+        let mut num_buf = [0u8; 96];
+        let status = format_scroll_status(&mut num_buf, display_top, bottom, total, offset);
+        write_viewport_str(status);
+        set_viewport_color(Color::White, Color::Black);
     }
 }
 

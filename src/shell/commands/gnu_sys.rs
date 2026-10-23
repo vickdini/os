@@ -163,7 +163,7 @@ impl Command for SleepCommand {
                 _state.last_status = 130;
                 return;
             }
-            uefi::boot::stall(Duration::from_millis(100));
+            crate::console::stall(Duration::from_millis(100));
         }
     }
 }
@@ -251,8 +251,8 @@ impl Command for YesCommand {
                 _state.last_status = 130;
                 break;
             }
-            // Yield 10ms to avoid freezing firmware timer/event queue
-            uefi::boot::stall(Duration::from_millis(10));
+            // Yield 10ms to avoid pegging CPU and check for interrupts
+            crate::console::stall(Duration::from_millis(10));
         }
     }
 }

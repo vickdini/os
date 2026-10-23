@@ -256,6 +256,22 @@ pub fn init() {
     drop(idt);
 }
 
+/// Enables the TSS Interrupt Stack Table (IST 1) for Double Fault (#DF) exceptions.
+pub fn enable_double_fault_ist() {
+    let mut idt = IDT.lock();
+    idt.entries[8].set_ist(1);
+    idt.load();
+}
+
+/// Updates the GDT code segment selector across all IDT gates and reloads the IDTR.
+pub fn reload_with_kernel_cs(cs: u16) {
+    let mut idt = IDT.lock();
+    for entry in idt.entries.iter_mut() {
+        entry.selector = cs;
+    }
+    idt.load();
+}
+
 /// Central Rust exception dispatcher called by assembly trampolines.
 #[no_mangle]
 extern "C" fn hydra_exception_handler(ctx: &mut ExceptionContext) {

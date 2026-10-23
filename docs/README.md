@@ -15,6 +15,7 @@ docs/
     ├── console.md                 # Thread-safe console & formatting macros (src/console.rs)
     ├── arch/
     │   ├── mod.md                 # Architecture-specific module root (src/arch/mod.rs)
+    │   ├── boot_services.md       # Hardware takeover & ExitBootServices (src/arch/boot_services.rs)
     │   ├── gdt.md                 # Global Descriptor Table, TSS & Rings (src/arch/gdt.rs)
     │   ├── idt.md                 # Interrupt Descriptor Table & Exception Gates (src/arch/idt.rs)
     │   ├── cpu.md                 # Control registers & CPU diagnostics (src/arch/cpu.rs)
@@ -48,6 +49,7 @@ docs/
 | **Interactive Shell**| [`src/shell.rs`](file:///d:/os/src/shell.rs) | [docs/src/shell.md](file:///d:/os/docs/src/shell.md) | Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing. |
 | **GDT & TSS** | [`src/arch/gdt.rs`](file:///d:/os/src/arch/gdt.rs) | [docs/src/arch/gdt.md](file:///d:/os/docs/src/arch/gdt.md) | Ring 0 / Ring 3 privilege levels, Task State Segment, double-fault stack. |
 | **IDT & Traps** | [`src/arch/idt.rs`](file:///d:/os/src/arch/idt.rs) | [docs/src/arch/idt.md](file:///d:/os/docs/src/arch/idt.md) | 256-gate IDT, assembly exception trampolines, IST double fault isolation, #BP/#PF dispatchers. |
+| **Hardware Takeover** | [`src/arch/boot_services.rs`](file:///d:/os/src/arch/boot_services.rs) | [docs/src/arch/boot_services.md](file:///d:/os/docs/src/arch/boot_services.md) | ExitBootServices, GDT/TSS switch, autonomous CR3 PML4, and PS/2 keyboard takeover. |
 | **CPU Control** | [`src/arch/cpu.rs`](file:///d:/os/src/arch/cpu.rs) | [docs/src/arch/cpu.md](file:///d:/os/docs/src/arch/cpu.md) | Control registers (`CR0`, `CR2`, `CR3`, `CR4`), paging roots. |
 | **Arch Root** | [`src/arch/mod.rs`](file:///d:/os/src/arch/mod.rs) | [docs/src/arch/mod.md](file:///d:/os/docs/src/arch/mod.md) | Architecture abstraction layer for hardware independence. |
 | **Physical Memory**| [`src/memory/frame_allocator.rs`](file:///d:/os/src/memory/frame_allocator.rs) | [docs/src/memory/frame_allocator.md](file:///d:/os/docs/src/memory/frame_allocator.md) | UEFI memory map parsing, 4 KiB frame allocator ("parking lot attendant"). |
@@ -79,6 +81,7 @@ When understanding or reviewing Hydra OS from initial hardware power-on through 
    - [Architecture Abstraction Layer](file:///d:/os/docs/src/arch/mod.md) (Hardware abstraction root)
    - [Global Descriptor Table (GDT) & TSS](file:///d:/os/docs/src/arch/gdt.md) (Ring 0 / Ring 3 privilege levels, Task State Segment, Double Fault IST stack)
    - [Interrupt Descriptor Table (IDT) & Hardware Exceptions](file:///d:/os/docs/src/arch/idt.md) (256-gate IDT, assembly trampolines, IST double-fault stack, #BP/#PF traps)
+   - [Hardware Takeover & ExitBootServices](file:///d:/os/docs/src/arch/boot_services.md) (Termination of UEFI firmware, GDT/TSS switch, CR3 PML4 takeover, PS/2 keyboard)
    - [CPU Control Registers & Diagnostics](file:///d:/os/docs/src/arch/cpu.md) (CR0 protection, CR2 fault addresses, CR3 PML4 paging root, CR4 extensions)
 5. **Physical & Virtual Memory Management (Step 3 & 4)**:
    - [Memory Subsystem Coordinator](file:///d:/os/docs/src/memory/mod.md) (Memory management root)

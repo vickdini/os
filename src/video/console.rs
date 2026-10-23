@@ -52,6 +52,11 @@ impl VideoConsole {
         self.bg = bg;
     }
 
+    pub fn set_cursor_pos(&mut self, col: usize, row: usize) {
+        self.cursor_col = col.min(self.max_cols.saturating_sub(1));
+        self.cursor_row = row.min(self.max_rows.saturating_sub(1));
+    }
+
     pub fn clear(&mut self) {
         self.framebuffer.clear(self.bg.0, self.bg.1, self.bg.2);
         self.cursor_col = 0;
@@ -167,5 +172,33 @@ pub fn clear_screen() {
     let mut guard = VIDEO_CONSOLE.lock();
     if let Some(ref mut console) = *guard {
         console.clear();
+    }
+}
+
+/// Returns the current (col, row) of the video console cursor.
+pub fn cursor_position() -> (usize, usize) {
+    let guard = VIDEO_CONSOLE.lock();
+    if let Some(ref console) = *guard {
+        console.cursor_pos()
+    } else {
+        (0, 0)
+    }
+}
+
+/// Sets the current (col, row) of the video console cursor.
+pub fn set_cursor_position(col: usize, row: usize) {
+    let mut guard = VIDEO_CONSOLE.lock();
+    if let Some(ref mut console) = *guard {
+        console.set_cursor_pos(col, row);
+    }
+}
+
+/// Returns the (cols, rows) dimensions of the video console matrix.
+pub fn dimensions() -> (usize, usize) {
+    let guard = VIDEO_CONSOLE.lock();
+    if let Some(ref console) = *guard {
+        (console.cols(), console.rows())
+    } else {
+        (80, 25)
     }
 }

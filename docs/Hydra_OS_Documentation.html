@@ -419,6 +419,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <li class="toc-item"><a href="#doc-boot-stage3-mod" class="toc-link"><span class="toc-title">Architecture Abstraction Layer</span><span class="toc-sub">Hardware isolation layer separating processor specifics from microkernel core.</span></a></li>
 <li class="toc-item"><a href="#doc-boot-stage3-gdt" class="toc-link"><span class="toc-title">Global Descriptor Table (GDT) & TSS</span><span class="toc-sub">Privilege levels (Ring 0 / Ring 3), Task State Segment, and Double Fault IST stack.</span></a></li>
 <li class="toc-item"><a href="#doc-boot-stage3-idt" class="toc-link"><span class="toc-title">Interrupt Descriptor Table (IDT) & Hardware Exceptions</span><span class="toc-sub">256-gate IDT, assembly exception trampolines, IST double fault isolation, and #BP/#PF dispatchers.</span></a></li>
+<li class="toc-item"><a href="#doc-boot-stage3-takeover" class="toc-link"><span class="toc-title">Hardware Takeover & ExitBootServices</span><span class="toc-sub">Terminating firmware control, reloading GDT/TSS, autonomous CR3 PML4, and 8042 PS/2 keyboard.</span></a></li>
 <li class="toc-item"><a href="#doc-boot-stage3-cpu" class="toc-link"><span class="toc-title">CPU Control Registers & Diagnostics</span><span class="toc-sub">Control register inspection (CR0 protection, CR2 fault address, CR3 PML4 root, CR4).</span></a></li>
 <li class="toc-stage-header">Stage 4: Memory Subsystem</li>
 <li class="toc-item"><a href="#doc-boot-stage4-mod" class="toc-link"><span class="toc-title">Memory Subsystem Coordinator</span><span class="toc-sub">Coordinator binding physical frame management and virtual memory translation.</span></a></li>
@@ -458,6 +459,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">console</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Thread-safe console &amp; formatting macros (src/console.rs)</span>
 <span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">arch</span><span class="o">/</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">mod</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Architecture-specific module root (src/arch/mod.rs)</span>
+<span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">boot_services</span><span class="o">.</span><span class="n">md</span><span class="w">       </span><span class="c1"># Hardware takeover &amp; ExitBootServices (src/arch/boot_services.rs)</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">gdt</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Global Descriptor Table, TSS &amp; Rings (src/arch/gdt.rs)</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">idt</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Interrupt Descriptor Table &amp; Exception Gates (src/arch/idt.rs)</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">cpu</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Control registers &amp; CPU diagnostics (src/arch/cpu.rs)</span>
@@ -526,6 +528,12 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <td style="text-align: left;"><a href="file:///d:/os/src/arch/idt.rs"><code>src/arch/idt.rs</code></a></td>
 <td style="text-align: left;"><a href="#doc-boot-stage3-idt">docs/src/arch/idt.md</a></td>
 <td style="text-align: left;">256-gate IDT, assembly exception trampolines, IST double fault isolation, #BP/#PF dispatchers.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Hardware Takeover</strong></td>
+<td style="text-align: left;"><a href="file:///d:/os/src/arch/boot_services.rs"><code>src/arch/boot_services.rs</code></a></td>
+<td style="text-align: left;"><a href="#doc-boot-stage3-takeover">docs/src/arch/boot_services.md</a></td>
+<td style="text-align: left;">ExitBootServices, GDT/TSS switch, autonomous CR3 PML4, and PS/2 keyboard takeover.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>CPU Control</strong></td>
@@ -622,6 +630,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
    - <a href="#doc-boot-stage3-mod">Architecture Abstraction Layer</a> (Hardware abstraction root)
    - <a href="#doc-boot-stage3-gdt">Global Descriptor Table (GDT) &amp; TSS</a> (Ring 0 / Ring 3 privilege levels, Task State Segment, Double Fault IST stack)
    - <a href="#doc-boot-stage3-idt">Interrupt Descriptor Table (IDT) &amp; Hardware Exceptions</a> (256-gate IDT, assembly trampolines, IST double-fault stack, #BP/#PF traps)
+   - <a href="#doc-boot-stage3-takeover">Hardware Takeover &amp; ExitBootServices</a> (Termination of UEFI firmware, GDT/TSS switch, CR3 PML4 takeover, PS/2 keyboard)
    - <a href="#doc-boot-stage3-cpu">CPU Control Registers &amp; Diagnostics</a> (CR0 protection, CR2 fault addresses, CR3 PML4 paging root, CR4 extensions)</li>
 <li><strong>Physical &amp; Virtual Memory Management (Step 3 &amp; 4)</strong>:
    - <a href="#doc-boot-stage3-mod">Memory Subsystem Coordinator</a> (Memory management root)
@@ -1180,8 +1189,120 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 
-<div id="doc-boot-stage3-cpu" class="doc-section">
+<div id="doc-boot-stage3-takeover" class="doc-section">
     <div class="section-stage-badge">Stage 3: CPU Architecture &bull; Boot Sequence Order #09</div>
+    <h1>Hardware Takeover &amp; ExitBootServices</h1>
+<ul>
+<li><strong>Source File</strong>: <a href="file:///d:/os/src/arch/boot_services.rs"><code>src/arch/boot_services.rs</code></a></li>
+<li><strong>Subsystem</strong>: Architecture / Hardware Ownership &amp; UEFI Termination</li>
+</ul>
+<hr />
+<h2>1. Conceptual Overview</h2>
+<p>Operating systems that boot via UEFI start their existence in a hybrid environment: the processor is in 64-bit Long Mode, but the firmware retains partial control over memory allocation, display devices, and the system timer via <strong>UEFI Boot Services</strong>.</p>
+<p>To become a true, self-governing microkernel, Hydra OS must execute the <strong>Hardware Takeover Sequence</strong> by calling the UEFI specification's terminal function: <code>ExitBootServices</code>.</p>
+<p>Once <code>ExitBootServices</code> succeeds:
+1. <strong>Firmware Eviction</strong>: All UEFI boot-time protocols, memory allocators, and event timers cease execution immediately.
+2. <strong>Hardware Reconfiguration</strong>: The kernel assumes exclusive control over the Global Descriptor Table (GDTR), Task State Segment (TR), Interrupt Descriptor Table (IDTR), and Page Table Root (CR3).
+3. <strong>Autonomous Driver Transition</strong>: Console output routes directly to Hydra's hardware GOP linear framebuffer (<code>VideoConsole</code>), and keyboard input routes directly to the physical 8042 PS/2 keyboard controller.</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">+---------------------------------------------------------------------------------+</span>
+<span class="c">|                         PHASE A: UEFI BOOT SERVICES                             |</span>
+<span class="c">|  </span><span class="nb">-</span><span class="c"> Firmware owns GDTR</span><span class="nt">,</span><span class="c"> IDTR</span><span class="nt">,</span><span class="c"> and CR3 PML4 Root                                  |</span>
+<span class="c">|  </span><span class="nb">-</span><span class="c"> Console output routed through UEFI SimpleTextOutput                          |</span>
+<span class="c">|  </span><span class="nb">-</span><span class="c"> Keyboard input polled through UEFI SimpleTextInput                           |</span>
+<span class="nb">+---------------------------------------------------------------------------------+</span>
+<span class="c">                                         |</span>
+<span class="c">                                         |  arch::boot_services::take_hardware_ownership()</span>
+<span class="c">                                         v</span>
+<span class="nb">+---------------------------------------------------------------------------------+</span>
+<span class="c">|                         PHASE B: HARDWARE TAKEOVER                              |</span>
+<span class="c">|  1</span><span class="nt">.</span><span class="c"> Enable Standalone Linear Framebuffer Console (VideoConsole)                 |</span>
+<span class="c">|  2</span><span class="nt">.</span><span class="c"> Switch Input to 8042 PS/2 Controller Driver (Ports 0x60/0x64)               |</span>
+<span class="c">|  3</span><span class="nt">.</span><span class="c"> Call ExitBootServices(None) </span><span class="nb">-</span><span class="nv">&gt;</span><span class="c"> Capture Final UEFI Memory Map                |</span>
+<span class="c">|  4</span><span class="nt">.</span><span class="c"> Load Hydra GDT into GDTR </span><span class="nb">-</span><span class="nv">&gt;</span><span class="c"> Far return (retfq) into Ring 0 CS (0x08)        |</span>
+<span class="c">|  5</span><span class="nt">.</span><span class="c"> Reload SS</span><span class="nt">,</span><span class="c"> DS</span><span class="nt">,</span><span class="c"> ES</span><span class="nt">,</span><span class="c"> FS</span><span class="nt">,</span><span class="c"> GS (0x10) and load TSS into TR via ltr (0x28)        |</span>
+<span class="c">|  6</span><span class="nt">.</span><span class="c"> Enable TSS IST 1 on IDT Double Fault (#DF) Gate                             |</span>
+<span class="c">|  7</span><span class="nt">.</span><span class="c"> Switch CPU CR3 to Hydra Autonomous PML4 Table (conventional RAM)            |</span>
+<span class="nb">+---------------------------------------------------------------------------------+</span>
+<span class="c">                                         |</span>
+<span class="c">                                         v</span>
+<span class="nb">+---------------------------------------------------------------------------------+</span>
+<span class="c">|                         PHASE C: BARE</span><span class="nb">-</span><span class="c">METAL HYDRA OS                            |</span>
+<span class="c">|  </span><span class="nb">-</span><span class="c"> 100% Autonomous Microkernel Execution with Zero Firmware Dependencies        |</span>
+<span class="nb">+---------------------------------------------------------------------------------+</span>
+</code></pre></div>
+
+<hr />
+<h2>2. Hardware Takeover Pipeline</h2>
+<h3>Step 1: Autonomous Video &amp; Keyboard Activation</h3>
+<p>Before firmware protocols are severed, Hydra switches console routing:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">enable_standalone_video</span><span class="p">(</span><span class="kc">true</span><span class="p">);</span>
+<span class="n">set_hardware_mode</span><span class="p">(</span><span class="kc">true</span><span class="p">);</span>
+</code></pre></div>
+
+<p>All subsequent <code>print!</code> and <code>println!</code> calls draw bitmap glyphs directly into physical video memory (<code>0x80000000</code>), and <code>get_key()</code> reads scancodes from port <code>0x60</code>.</p>
+<h3>Step 2: Calling <code>ExitBootServices</code></h3>
+<div class="codehilite"><pre><span></span><code><span class="kd">let</span><span class="w"> </span><span class="n">memory_map</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">unsafe</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">uefi</span><span class="p">::</span><span class="n">boot</span><span class="p">::</span><span class="n">exit_boot_services</span><span class="p">(</span><span class="nb">None</span><span class="p">)</span><span class="w"> </span><span class="p">};</span>
+<span class="kd">let</span><span class="w"> </span><span class="n">entries_count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">memory_map</span><span class="p">.</span><span class="n">entries</span><span class="p">().</span><span class="n">count</span><span class="p">();</span>
+</code></pre></div>
+
+<p>The firmware validates the memory map key, frees internal boot-service structures, and hands unconditional hardware control to Hydra.</p>
+<h3>Step 3: GDT &amp; Segment Reload (<code>load_and_switch</code>)</h3>
+<p>In 64-bit mode, the Code Segment (<code>CS</code>) cannot be reloaded using <code>mov cs, ax</code>. Hydra uses a far return (<code>retfq</code>) trampoline to reload <code>CS</code> with <code>0x08</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="w">    </span><span class="nf">push</span><span class="w"> </span><span class="p">{</span><span class="nv">sel</span><span class="p">}</span><span class="w">              </span><span class="o">//</span><span class="w"> </span><span class="nv">Kernel</span><span class="w"> </span><span class="nv">Code</span><span class="w"> </span><span class="nv">Selector</span><span class="w"> </span><span class="p">(</span><span class="mh">0x08</span><span class="p">)</span>
+<span class="w">    </span><span class="nf">lea</span><span class="w"> </span><span class="p">{</span><span class="nv">tmp</span><span class="p">},</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="nv">f</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nv">rip</span><span class="p">]</span><span class="w">   </span><span class="o">//</span><span class="w"> </span><span class="nv">Return</span><span class="w"> </span><span class="nv">RIP</span>
+<span class="w">    </span><span class="nf">push</span><span class="w"> </span><span class="p">{</span><span class="nv">tmp</span><span class="p">}</span>
+<span class="w">    </span><span class="nf">retfq</span><span class="w">                   </span><span class="o">//</span><span class="w"> </span><span class="nv">Far</span><span class="w"> </span><span class="nv">return</span><span class="p">:</span><span class="w"> </span><span class="nv">pops</span><span class="w"> </span><span class="nv">RIP</span><span class="w"> </span><span class="nv">then</span><span class="w"> </span><span class="nb">CS</span>
+<span class="err">2:</span>
+<span class="w">    </span><span class="nf">mov</span><span class="w"> </span><span class="nb">ds</span><span class="p">,</span><span class="w"> </span><span class="mh">0x10</span>
+<span class="w">    </span><span class="nf">mov</span><span class="w"> </span><span class="nb">ss</span><span class="p">,</span><span class="w"> </span><span class="mh">0x10</span>
+<span class="w">    </span><span class="nf">ltr</span><span class="w"> </span><span class="p">{</span><span class="nv">tss_sel</span><span class="p">}</span><span class="w">           </span><span class="o">//</span><span class="w"> </span><span class="nv">Load</span><span class="w"> </span><span class="nv">Task</span><span class="w"> </span><span class="nv">Register</span><span class="w"> </span><span class="nv">with</span><span class="w"> </span><span class="mh">0x28</span>
+</code></pre></div>
+
+<h3>Step 4: TSS IST Attachment on Double Fault</h3>
+<p>With the Task Register (<code>TR</code>) loaded with Hydra's TSS, the IDT entry for Double Fault (<code>#DF</code>, vector 8) is linked to IST index 1:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">idt</span><span class="p">.</span><span class="n">entries</span><span class="p">[</span><span class="mi">8</span><span class="p">].</span><span class="n">set_ist</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+</code></pre></div>
+
+<p>Any catastrophic kernel stack overflow will now switch immediately to Hydra's dedicated 20 KiB emergency stack.</p>
+<h3>Step 5: Autonomous CR3 Switch</h3>
+<p>Hydra switches the processor's Page Map Level 4 root from the firmware's PML4 table to Hydra's autonomous PML4 table:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">KERNEL_SPACE</span><span class="p">.</span><span class="n">lock</span><span class="p">().</span><span class="n">switch</span><span class="p">();</span>
+</code></pre></div>
+
+<hr />
+<h2>3. The 8042 PS/2 Keyboard Driver</h2>
+<p>In bare-metal mode, keystrokes are processed by <a href="file:///d:/os/src/arch/keyboard.rs"><code>src/arch/keyboard.rs</code></a>:
+- <strong>Status Port <code>0x64</code></strong>: Polled for bit 0 (<code>Output Buffer Full</code>).
+- <strong>Data Port <code>0x60</code></strong>: Reads Scancode Set 1 make/break codes.
+- <strong>Modifier Tracking</strong>: Tracks Shift (<code>0x2A</code>/<code>0x36</code>) and Ctrl (<code>0x1D</code>) state to generate uppercase letters, punctuation, and control characters (such as <code>Ctrl+C</code>).
+- <strong>Extended Scancodes (<code>0xE0</code>)</strong>: Decodes arrow keys (<code>Up</code>, <code>Down</code>, <code>Left</code>, <code>Right</code>), <code>PageUp</code>, <code>PageDown</code>, <code>Home</code>, and <code>End</code> for terminal line editing and history navigation.</p>
+<hr />
+<h2>4. Interactive Verification &amp; Shell Command</h2>
+<p>The microkernel includes an interactive shell command <code>exitboot</code> (aliased to <code>takeover</code>, <code>baremetal</code>, and <code>hwmode</code>):</p>
+<div class="codehilite"><pre><span></span><code>hydra:/bin&gt;<span class="w"> </span>exitboot<span class="w"> </span>status
+<span class="o">[</span>-<span class="o">]</span><span class="w"> </span>Hardware<span class="w"> </span>Mode:<span class="w"> </span>INACTIVE<span class="w"> </span><span class="o">(</span>Running<span class="w"> </span>under<span class="w"> </span>UEFI<span class="w"> </span>Boot<span class="w"> </span>Services<span class="o">)</span>
+<span class="w">    </span>Type<span class="w"> </span><span class="s1">'exitboot'</span><span class="w"> </span>to<span class="w"> </span>terminate<span class="w"> </span>boot<span class="w"> </span>services<span class="w"> </span>and<span class="w"> </span>take<span class="w"> </span>full<span class="w"> </span>hardware<span class="w"> </span>control.
+
+hydra:/bin&gt;<span class="w"> </span>exitboot
+<span class="o">[</span>*<span class="o">]</span><span class="w"> </span>Initiating<span class="w"> </span>ExitBootServices<span class="w"> </span>and<span class="w"> </span>Bare-Metal<span class="w"> </span>Hardware<span class="w"> </span>Takeover...
+
+<span class="o">============================================================</span>
+<span class="w"> </span><span class="o">[</span>+<span class="o">]</span><span class="w"> </span>HYDRA<span class="w"> </span>MICROKERNEL:<span class="w"> </span>FULL<span class="w"> </span>HARDWARE<span class="w"> </span>TAKEOVER<span class="w"> </span>COMPLETE!<span class="w">    </span>
+<span class="o">============================================================</span>
+<span class="w">  </span>-<span class="w"> </span>UEFI<span class="w"> </span>Boot<span class="w"> </span>Services<span class="w"> </span>:<span class="w"> </span>TERMINATED<span class="w"> </span><span class="o">(</span>ExitBootServices<span class="w"> </span>invoked<span class="o">)</span>
+<span class="w">  </span>-<span class="w"> </span>Memory<span class="w"> </span>Map<span class="w"> </span>Entries<span class="w"> </span>:<span class="w"> </span><span class="m">61</span><span class="w"> </span>descriptors<span class="w"> </span>captured
+<span class="w">  </span>-<span class="w"> </span>GDT<span class="w"> </span><span class="p">&amp;</span><span class="w"> </span>TSS<span class="w"> </span>Status<span class="w">   </span>:<span class="w"> </span>Hydra<span class="w"> </span>Ring<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="nv">CS</span><span class="o">=</span>0x8,<span class="w"> </span><span class="nv">DS</span><span class="o">=</span>0x10,<span class="w"> </span><span class="nv">TR</span><span class="o">=</span>0x28
+<span class="w">  </span>-<span class="w"> </span>Interrupts<span class="w"> </span><span class="p">&amp;</span><span class="w"> </span>IDT<span class="w">   </span>:<span class="w"> </span>Hydra<span class="w"> </span><span class="m">256</span><span class="w"> </span>gates<span class="w"> </span><span class="o">(</span>Double<span class="w"> </span>Fault<span class="w"> </span>on<span class="w"> </span>TSS<span class="w"> </span>IST1<span class="o">)</span>
+<span class="w">  </span>-<span class="w"> </span>Virtual<span class="w"> </span>Memory<span class="w">     </span>:<span class="w"> </span>Autonomous<span class="w"> </span>PML4<span class="w"> </span>Root<span class="w"> </span>at<span class="w"> </span>PhysAddr<span class="w"> </span>0x901000
+<span class="w">  </span>-<span class="w"> </span>Display<span class="w"> </span><span class="p">&amp;</span><span class="w"> </span>Input<span class="w">    </span>:<span class="w"> </span>1024x768<span class="w"> </span>Linear<span class="w"> </span>Framebuffer<span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="m">8042</span><span class="w"> </span>PS/2<span class="w"> </span><span class="nv">Keyboard</span>
+<span class="o">============================================================</span>
+</code></pre></div>
+</div>
+
+
+
+<div id="doc-boot-stage3-cpu" class="doc-section">
+    <div class="section-stage-badge">Stage 3: CPU Architecture &bull; Boot Sequence Order #10</div>
     <h1>CPU Control &amp; Register Diagnostics Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/arch/cpu.rs"><code>src/arch/cpu.rs</code></a></li>
@@ -1222,7 +1343,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage4-mod" class="doc-section">
-    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #10</div>
+    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #11</div>
     <h1>Memory Subsystem Overview</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/memory/mod.rs"><code>src/memory/mod.rs</code></a></li>
@@ -1244,7 +1365,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage4-frame" class="doc-section">
-    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #11</div>
+    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #12</div>
     <h1>Physical Memory &amp; Frame Allocator Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/memory/frame_allocator.rs"><code>src/memory/frame_allocator.rs</code></a></li>
@@ -1358,7 +1479,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage4-heap" class="doc-section">
-    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #12</div>
+    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #13</div>
     <h1>Dynamic Kernel Heap Allocator Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/memory/heap.rs"><code>src/memory/heap.rs</code></a></li>
@@ -1459,7 +1580,7 @@ hydra&gt; heap test
 
 
 <div id="doc-boot-stage5-paging" class="doc-section">
-    <div class="section-stage-badge">Stage 5: Virtual Memory &bull; Boot Sequence Order #13</div>
+    <div class="section-stage-badge">Stage 5: Virtual Memory &bull; Boot Sequence Order #14</div>
     <h1>Virtual Memory &amp; Paging Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/memory/paging.rs"><code>src/memory/paging.rs</code></a></li>
@@ -1600,7 +1721,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage6-cap-mod" class="doc-section">
-    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #14</div>
+    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #15</div>
     <h1>Capability Subsystem Overview</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/capability/mod.rs"><code>src/capability/mod.rs</code></a></li>
@@ -1711,7 +1832,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage6-cap-table" class="doc-section">
-    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #15</div>
+    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #16</div>
     <h1>Capability Table Module Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/capability/table.rs"><code>src/capability/table.rs</code></a></li>
@@ -1800,7 +1921,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage7-ipc-mod" class="doc-section">
-    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #16</div>
+    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #17</div>
     <h1>IPC Subsystem Overview</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/ipc/mod.rs"><code>src/ipc/mod.rs</code></a></li>
@@ -1828,7 +1949,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage7-ipc-msg" class="doc-section">
-    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #17</div>
+    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #18</div>
     <h1>IPC Message Module Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/ipc/message.rs"><code>src/ipc/message.rs</code></a></li>
@@ -1932,7 +2053,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage7-ipc-ep" class="doc-section">
-    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #18</div>
+    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #19</div>
     <h1>IPC Endpoint Module Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/ipc/endpoint.rs"><code>src/ipc/endpoint.rs</code></a></li>
@@ -2042,7 +2163,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage8-zfs" class="doc-section">
-    <div class="section-stage-badge">Stage 8: File Server & Storage &bull; Boot Sequence Order #19</div>
+    <div class="section-stage-badge">Stage 8: File Server & Storage &bull; Boot Sequence Order #20</div>
     <h1>ZFS Microkernel File Server Documentation</h1>
 <ul>
 <li><strong>Source Directory</strong>: <a href="file:///d:/os/src/fs/zfs/"><code>src/fs/zfs/</code></a> &amp; <a href="file:///d:/os/src/fs/client.rs"><code>src/fs/client.rs</code></a></li>
@@ -2220,7 +2341,7 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 
 
 <div id="doc-boot-stage8b-video" class="doc-section">
-    <div class="section-stage-badge">Stage 8b: Hardware Video & Framebuffer &bull; Boot Sequence Order #20</div>
+    <div class="section-stage-badge">Stage 8b: Hardware Video & Framebuffer &bull; Boot Sequence Order #21</div>
     <h1>Hardware Video Driver &amp; GOP Framebuffer Documentation</h1>
 <ul>
 <li><strong>Source Module</strong>: <a href="file:///d:/os/src/video/"><code>src/video/</code></a></li>
@@ -2304,7 +2425,7 @@ hydra&gt; video clear
 
 
 <div id="doc-boot-stage9-shell" class="doc-section">
-    <div class="section-stage-badge">Stage 9: Interactive Shell &bull; Boot Sequence Order #21</div>
+    <div class="section-stage-badge">Stage 9: Interactive Shell &bull; Boot Sequence Order #22</div>
     <h1>Interactive Microkernel Shell Documentation</h1>
 <ul>
 <li><strong>Source Directory</strong>: <a href="file:///d:/os/src/shell/"><code>src/shell/</code></a></li>

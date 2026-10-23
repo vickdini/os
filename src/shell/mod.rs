@@ -113,7 +113,7 @@ pub fn run() -> ! {
                     cmd.execute(&[], &mut state);
                 }
                 loop {
-                    uefi::boot::stall(core::time::Duration::from_millis(500));
+                    crate::console::stall(core::time::Duration::from_millis(500));
                 }
             }
         };

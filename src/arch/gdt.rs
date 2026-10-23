@@ -65,3 +65,34 @@ pub fn init() {
 pub fn get_selectors() -> &'static Selectors {
     &GDT.1
 }
+
+/// Loads Hydra's GDT into GDTR, reloads CS and SS/DS/ES/FS/GS, and loads TSS into TR.
+pub fn load_and_switch() {
+    GDT.0.load();
+    unsafe {
+        // Far return to reload CS with kernel code selector (0x08)
+        core::arch::asm!(
+            "push {sel}",
+            "lea {tmp}, [2f + rip]",
+            "push {tmp}",
+            "retfq",
+            "2:",
+            sel = in(reg) u64::from(GDT.1.kernel_code_selector.0),
+            tmp = out(reg) _,
+            options(preserves_flags),
+        );
+        // Reload data and stack segment selectors
+        let data_sel = GDT.1.kernel_data_selector.0;
+        core::arch::asm!(
+            "mov ds, {sel:x}",
+            "mov es, {sel:x}",
+            "mov fs, {sel:x}",
+            "mov gs, {sel:x}",
+            "mov ss, {sel:x}",
+            sel = in(reg) data_sel,
+            options(preserves_flags),
+        );
+        // Load Task Register (TR) with TSS selector
+        x86_64::instructions::tables::load_tss(GDT.1.tss_selector);
+    }
+}

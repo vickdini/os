@@ -36,6 +36,9 @@ pub fn path_to_cstr16<'a>(path: &str, buf: &'a mut [u16]) -> Option<&'a CStr16> 
 
 /// Attempts to open the boot volume root directory.
 pub fn open_root_volume() -> Result<Directory, &'static str> {
+    if crate::console::is_hardware_mode() {
+        return Err("UEFI Boot Services terminated (operating in bare-metal hardware mode)");
+    }
     let handle = uefi::boot::image_handle();
     let mut fs = uefi::boot::get_image_file_system(handle)
         .map_err(|_| "Failed to access boot file system protocol")?;
@@ -45,6 +48,9 @@ pub fn open_root_volume() -> Result<Directory, &'static str> {
 
 /// Executes an executable file found at the given filesystem path.
 pub fn execute_file(path: &str, args: &[&str]) -> Result<(), &'static str> {
+    if crate::console::is_hardware_mode() {
+        return Err("UEFI application execution unavailable in bare-metal hardware mode (Boot Services terminated)");
+    }
     let mut root = open_root_volume()?;
     let mut path_u16 = [0u16; 128];
     let cstr = path_to_cstr16(path, &mut path_u16)
@@ -182,6 +188,11 @@ pub fn search_and_execute(command_name: &str, args: &[&str], state: &mut ShellSt
                     if bytes_read >= 2 && buffer[0] == 0x4D && buffer[1] == 0x5A {
                         set_color(Color::LightCyan, Color::Black);
                         println!("[*] Executing '{}' from ZFS File Server (Dataset: hydrapool/bin, {} bytes, Fletcher-4 verified)...", cand, bytes_read);
+                        if crate::console::is_hardware_mode() {
+                            set_color(Color::Yellow, Color::Black);
+                            println!("[-] EFI binary execution requires UEFI boot services, which are terminated.");
+                            return true;
+                        }
                         let parent_handle = uefi::boot::image_handle();
                         match uefi::boot::load_image(
                             parent_handle,
@@ -216,6 +227,12 @@ pub fn search_and_execute(command_name: &str, args: &[&str], state: &mut ShellSt
     }
 
     // 2. Secondary check: UEFI Boot Volume FAT Filesystem
+    // If running in bare-metal hardware mode, UEFI boot services are terminated.
+    // Skip UEFI FAT filesystem binary lookup to avoid invoking terminated boot services.
+    if crate::console::is_hardware_mode() {
+        return false;
+    }
+
     let mut candidate_path = [0u8; 128];
 
     for &dir in DEFAULT_SEARCH_PATHS {
@@ -299,6 +316,9 @@ pub fn search_and_execute(command_name: &str, args: &[&str], state: &mut ShellSt
 
 /// Checks if a regular file exists at the given path on the boot volume.
 pub fn file_exists(path: &str) -> bool {
+    if crate::console::is_hardware_mode() {
+        return false;
+    }
     let mut root = match open_root_volume() {
         Ok(r) => r,
         Err(_) => return false,

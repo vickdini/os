@@ -96,6 +96,13 @@ DOCS_ORDER = [
     },
     {
         "stage": "Stage 3: CPU Architecture",
+        "title": "Hardware Takeover & ExitBootServices",
+        "file": "docs/src/arch/boot_services.md",
+        "anchor": "doc-boot-stage3-takeover",
+        "subtitle": "Terminating firmware control, reloading GDT/TSS, autonomous CR3 PML4, and 8042 PS/2 keyboard.",
+    },
+    {
+        "stage": "Stage 3: CPU Architecture",
         "title": "CPU Control Registers & Diagnostics",
         "file": "docs/src/arch/cpu.md",
         "anchor": "doc-boot-stage3-cpu",

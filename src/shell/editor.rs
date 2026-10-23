@@ -1,4 +1,3 @@
-use core::fmt::Write;
 use uefi::proto::console::text::{Color, Key, ScanCode};
 
 use crate::console::{get_key, set_color};
@@ -7,44 +6,38 @@ use crate::fs::zfs::types::DnodeType;
 use crate::shell::commands::all_commands;
 use crate::shell::state::ShellState;
 
-/// Moves cursor left by `count` positions on the UEFI console.
+/// Moves cursor left by `count` positions on the console.
 fn move_cursor_left(count: usize) {
     if count == 0 {
         return;
     }
-    uefi::system::with_stdout(|stdout| {
-        let (col, row) = stdout.cursor_position();
-        if col >= count {
-            let _ = stdout.set_cursor_position(col - count, row);
-        }
-    });
+    let (col, row) = crate::console::cursor_position();
+    if col >= count {
+        crate::console::set_cursor_position(col - count, row);
+    }
 }
 
-/// Moves cursor right by `count` positions on the UEFI console.
+/// Moves cursor right by `count` positions on the console.
 fn move_cursor_right(count: usize) {
     if count == 0 {
         return;
     }
-    uefi::system::with_stdout(|stdout| {
-        let (col, row) = stdout.cursor_position();
-        let _ = stdout.set_cursor_position(col + count, row);
-    });
+    let (col, row) = crate::console::cursor_position();
+    crate::console::set_cursor_position(col + count, row);
 }
 
 /// Redraws the line from the start of the input area (prompt_col).
 fn redraw_line(old_len: usize, new_text: &str, cursor_pos_before: usize, new_cursor_pos: usize) {
-    uefi::system::with_stdout(|stdout| {
-        let (cur_col, cur_row) = stdout.cursor_position();
-        let prompt_col = cur_col.saturating_sub(cursor_pos_before);
-        let _ = stdout.set_cursor_position(prompt_col, cur_row);
-        let _ = stdout.write_str(new_text);
-        if old_len > new_text.len() {
-            for _ in 0..(old_len - new_text.len()) {
-                let _ = stdout.write_str(" ");
-            }
+    let (cur_col, cur_row) = crate::console::cursor_position();
+    let prompt_col = cur_col.saturating_sub(cursor_pos_before);
+    crate::console::set_cursor_position(prompt_col, cur_row);
+    crate::print!("{}", new_text);
+    if old_len > new_text.len() {
+        for _ in 0..(old_len - new_text.len()) {
+            crate::print!(" ");
         }
-        let _ = stdout.set_cursor_position(prompt_col + new_cursor_pos, cur_row);
-    });
+    }
+    crate::console::set_cursor_position(prompt_col + new_cursor_pos, cur_row);
 }
 
 fn navigate_history_up(

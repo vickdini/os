@@ -22,6 +22,13 @@ impl Command for EfifsCommand {
     }
 
     fn execute(&self, args: &[&str], _state: &mut ShellState) {
+        if crate::console::is_hardware_mode() {
+            set_color(Color::Yellow, Color::Black);
+            println!("[-] 'efifs' is unavailable in hardware mode: UEFI Boot Services have been terminated.");
+            println!("    Use native ZFS file commands ('ls', 'cat', 'write') instead.");
+            return;
+        }
+
         if args.is_empty() {
             set_color(Color::LightRed, Color::Black);
             println!("Usage: efifs <ls [path] | cat <path> | run <path>>");

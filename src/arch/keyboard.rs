@@ -1,0 +1,156 @@
+use core::sync::atomic::{AtomicBool, Ordering};
+use spin::Mutex;
+use uefi::proto::console::text::{Key, ScanCode};
+use uefi::Char16;
+use x86_64::instructions::port::Port;
+
+static SHIFT_HELD: AtomicBool = AtomicBool::new(false);
+static CTRL_HELD: AtomicBool = AtomicBool::new(false);
+static EXTENDED_PREFIX: AtomicBool = AtomicBool::new(false);
+static KEYBOARD_LOCK: Mutex<()> = Mutex::new(());
+
+/// Reads a scancode non-blockingly from the standard 8042 PS/2 controller.
+pub fn read_key() -> Option<Key> {
+    let _guard = KEYBOARD_LOCK.lock();
+    let mut status_port: Port<u8> = Port::new(0x64);
+    let status = unsafe { status_port.read() };
+
+    // Bit 0: Output buffer full (1 = byte ready to read from port 0x60)
+    if (status & 0x01) == 0 {
+        return None;
+    }
+
+    let mut data_port: Port<u8> = Port::new(0x60);
+    let scancode = unsafe { data_port.read() };
+
+    if scancode == 0xE0 {
+        EXTENDED_PREFIX.store(true, Ordering::SeqCst);
+        return None;
+    }
+
+    let is_extended = EXTENDED_PREFIX.swap(false, Ordering::SeqCst);
+    let is_break = (scancode & 0x80) != 0;
+    let make_code = scancode & 0x7F;
+
+    if is_break {
+        // Key release
+        match make_code {
+            0x2A | 0x36 => SHIFT_HELD.store(false, Ordering::SeqCst),
+            0x1D => CTRL_HELD.store(false, Ordering::SeqCst),
+            _ => {}
+        }
+        return None;
+    }
+
+    // Key press (Make)
+    match make_code {
+        0x2A | 0x36 => {
+            SHIFT_HELD.store(true, Ordering::SeqCst);
+            return None;
+        }
+        0x1D => {
+            CTRL_HELD.store(true, Ordering::SeqCst);
+            return None;
+        }
+        _ => {}
+    }
+
+    let shift = SHIFT_HELD.load(Ordering::SeqCst);
+    let ctrl = CTRL_HELD.load(Ordering::SeqCst);
+
+    if is_extended {
+        // Extended keys (arrows, navigation)
+        return match make_code {
+            0x48 => Some(Key::Special(ScanCode(1))),  // Up
+            0x50 => Some(Key::Special(ScanCode(2))),  // Down
+            0x4D => Some(Key::Special(ScanCode(3))),  // Right
+            0x4B => Some(Key::Special(ScanCode(4))),  // Left
+            0x47 => Some(Key::Special(ScanCode(5))),  // Home
+            0x4F => Some(Key::Special(ScanCode(6))),  // End
+            0x53 => Some(Key::Special(ScanCode(8))),  // Delete
+            0x49 => Some(Key::Special(ScanCode(9))),  // PageUp
+            0x51 => Some(Key::Special(ScanCode(10))), // PageDown
+            _ => None,
+        };
+    }
+
+    // Standard Scancode Set 1 decoding
+    let ch: Option<char> = match make_code {
+        0x01 => Some('\x1B'), // Escape
+        0x02 => Some(if shift { '!' } else { '1' }),
+        0x03 => Some(if shift { '@' } else { '2' }),
+        0x04 => Some(if shift { '#' } else { '3' }),
+        0x05 => Some(if shift { '$' } else { '4' }),
+        0x06 => Some(if shift { '%' } else { '5' }),
+        0x07 => Some(if shift { '^' } else { '6' }),
+        0x08 => Some(if shift { '&' } else { '7' }),
+        0x09 => Some(if shift { '*' } else { '8' }),
+        0x0A => Some(if shift { '(' } else { '9' }),
+        0x0B => Some(if shift { ')' } else { '0' }),
+        0x0C => Some(if shift { '_' } else { '-' }),
+        0x0D => Some(if shift { '+' } else { '=' }),
+        0x0E => Some('\x08'), // Backspace
+        0x0F => Some('\t'),   // Tab
+        0x10 => Some(if shift { 'Q' } else { 'q' }),
+        0x11 => Some(if shift { 'W' } else { 'w' }),
+        0x12 => Some(if shift { 'E' } else { 'e' }),
+        0x13 => Some(if shift { 'R' } else { 'r' }),
+        0x14 => Some(if shift { 'T' } else { 't' }),
+        0x15 => Some(if shift { 'Y' } else { 'y' }),
+        0x16 => Some(if shift { 'U' } else { 'u' }),
+        0x17 => Some(if shift { 'I' } else { 'i' }),
+        0x18 => Some(if shift { 'O' } else { 'o' }),
+        0x19 => Some(if shift { 'P' } else { 'p' }),
+        0x1A => Some(if shift { '{' } else { '[' }),
+        0x1B => Some(if shift { '}' } else { ']' }),
+        0x1C => Some('\r'), // Enter
+        0x1E => Some(if shift { 'A' } else { 'a' }),
+        0x1F => Some(if shift { 'S' } else { 's' }),
+        0x20 => Some(if shift { 'D' } else { 'd' }),
+        0x21 => Some(if shift { 'F' } else { 'f' }),
+        0x22 => Some(if shift { 'G' } else { 'g' }),
+        0x23 => Some(if shift { 'H' } else { 'h' }),
+        0x24 => Some(if shift { 'J' } else { 'j' }),
+        0x25 => Some(if shift { 'K' } else { 'k' }),
+        0x26 => Some(if shift { 'L' } else { 'l' }),
+        0x27 => Some(if shift { ':' } else { ';' }),
+        0x28 => Some(if shift { '"' } else { '\'' }),
+        0x29 => Some(if shift { '~' } else { '`' }),
+        0x2B => Some(if shift { '|' } else { '\\' }),
+        0x2C => Some(if shift { 'Z' } else { 'z' }),
+        0x2D => Some(if shift { 'X' } else { 'x' }),
+        0x2E => Some(if shift { 'C' } else { 'c' }),
+        0x2F => Some(if shift { 'V' } else { 'v' }),
+        0x30 => Some(if shift { 'B' } else { 'b' }),
+        0x31 => Some(if shift { 'N' } else { 'n' }),
+        0x32 => Some(if shift { 'M' } else { 'm' }),
+        0x33 => Some(if shift { '<' } else { ',' }),
+        0x34 => Some(if shift { '>' } else { '.' }),
+        0x35 => Some(if shift { '?' } else { '/' }),
+        0x39 => Some(' '), // Space
+        _ => None,
+    };
+
+    if let Some(mut c) = ch {
+        if ctrl && c.is_ascii_alphabetic() {
+            // ASCII Control Code 1..26 for Ctrl+A .. Ctrl+Z
+            let ascii_val = (c.to_ascii_uppercase() as u8) - b'@';
+            c = ascii_val as char;
+        }
+        if let Ok(c16) = Char16::try_from(c) {
+            return Some(Key::Printable(c16));
+        }
+    }
+
+    None
+}
+
+/// Blocking wait for the next key from the PS/2 keyboard.
+pub fn get_key() -> Key {
+    loop {
+        if let Some(key) = read_key() {
+            return key;
+        }
+        core::hint::spin_loop();
+    }
+}

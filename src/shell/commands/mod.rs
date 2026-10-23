@@ -1,6 +1,7 @@
 pub mod caps;
 pub mod cpu;
 pub mod efifs;
+pub mod exitboot;
 pub mod fs_cmds;
 pub mod gnu_fs;
 pub mod gnu_sys;
@@ -24,6 +25,7 @@ use crate::shell::command::Command;
 pub use caps::{CapInsertCommand, CapRevokeCommand, CapsCommand};
 pub use cpu::CpuCommand;
 pub use efifs::EfifsCommand;
+pub use exitboot::ExitBootCommand;
 pub use fs_cmds::{CatCommand, LsCommand, WriteCommand};
 pub use gnu_fs::{
     CdCommand, CpCommand, DfCommand, DuCommand, MkdirCommand, MvCommand, PwdCommand, RmCommand,
@@ -113,6 +115,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &EfifsCommand,
     &PanicCommand,
     &TrapCommand,
+    &ExitBootCommand,
     // Power Management
     &RebootCommand,
     &ShutdownCommand,
