@@ -434,6 +434,8 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <li class="toc-item"><a href="#doc-boot-stage7-ipc-ep" class="toc-link"><span class="toc-title">Rendezvous Channels & Endpoints</span><span class="toc-sub">Circular FIFO ring buffers, rendezvous mailboxes, and thread-safe SharedEndpoint.</span></a></li>
 <li class="toc-stage-header">Stage 8: File Server & Storage</li>
 <li class="toc-item"><a href="#doc-boot-stage8-zfs" class="toc-link"><span class="toc-title">ZFS Microkernel File Server Architecture</span><span class="toc-sub">Microkernel ZFS File Server (Endpoint 0x20), CoW Merkle tree, Fletcher-4 checksums, and datasets.</span></a></li>
+<li class="toc-stage-header">Stage 8b: Hardware Video & Framebuffer</li>
+<li class="toc-item"><a href="#doc-boot-stage8b-video" class="toc-link"><span class="toc-title">Hardware Video Driver & Framebuffer Console</span><span class="toc-sub">UEFI GOP linear framebuffer discovery, 8x16 bitmap font, and autonomous pixel console.</span></a></li>
 <li class="toc-stage-header">Stage 9: Interactive Shell</li>
 <li class="toc-item"><a href="#doc-boot-stage9-shell" class="toc-link"><span class="toc-title">Interactive Microkernel Shell & Command REPL</span><span class="toc-sub">Command REPL, real-time memory/CPU inspection, CSpace manipulation, ZFS commands, and IPC testing.</span></a></li>
     </ul>
@@ -467,6 +469,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">capability</span><span class="o">/</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">mod</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Capability types &amp; Rights bitflags (src/capability/mod.rs)</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">└──</span><span class="w"> </span><span class="n">table</span><span class="o">.</span><span class="n">md</span><span class="w">               </span><span class="c1"># Task capability table &amp; CSpace (src/capability/table.rs)</span>
+<span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">video</span><span class="o">.</span><span class="n">md</span><span class="w">                   </span><span class="c1"># Hardware GOP display driver &amp; framebuffer console (src/video/)</span>
 <span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">shell</span><span class="o">.</span><span class="n">md</span><span class="w">                   </span><span class="c1"># Interactive microkernel shell &amp; command REPL (src/shell.rs)</span>
 <span class="w">    </span><span class="err">└──</span><span class="w"> </span><span class="n">ipc</span><span class="o">/</span>
 <span class="w">        </span><span class="err">├──</span><span class="w"> </span><span class="n">mod</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># IPC subsystem root (src/ipc/mod.rs)</span>
@@ -497,6 +500,12 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <td style="text-align: left;"><a href="file:///d:/os/src/console.rs"><code>src/console.rs</code></a></td>
 <td style="text-align: left;"><a href="#doc-boot-stage2">docs/src/console.md</a></td>
 <td style="text-align: left;">Thread-safe <code>print!</code> / <code>println!</code> macros, keyboard input, screen formatting.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Video &amp; GOP</strong></td>
+<td style="text-align: left;"><a href="file:///d:/os/src/video"><code>src/video/</code></a></td>
+<td style="text-align: left;"><a href="#doc-boot-stage8b-video">docs/src/video.md</a></td>
+<td style="text-align: left;">UEFI GOP linear framebuffer, 8x16 bitmap font, and standalone graphical console.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Interactive Shell</strong></td>
@@ -2057,8 +2066,92 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 
 
 
+<div id="doc-boot-stage8b-video" class="doc-section">
+    <div class="section-stage-badge">Stage 8b: Hardware Video & Framebuffer &bull; Boot Sequence Order #19</div>
+    <h1>Hardware Video Driver &amp; GOP Framebuffer Documentation</h1>
+<ul>
+<li><strong>Source Module</strong>: <a href="file:///d:/os/src/video/"><code>src/video/</code></a></li>
+<li><strong>Subsystem</strong>: Display Driver, Linear Framebuffer &amp; Autonomous Video Console</li>
+</ul>
+<hr />
+<h2>1. Conceptual Overview</h2>
+<p>Before an operating system can terminate firmware boot services (<code>ExitBootServices</code>), it must take complete ownership of the hardware display. Otherwise, text and graphics output will terminate with the firmware.</p>
+<p>Hydra's video subsystem:
+1. Discovers the <strong>UEFI Graphics Output Protocol (GOP)</strong> while boot services are active.
+2. Retrieves the hardware's 32-bit linear physical framebuffer pointer, resolution (e.g. 1024x768 or native display), stride, and pixel format (<code>Rgb8</code> or <code>Bgr8</code>).
+3. Uses Hydra's Virtual Memory Manager (<a href="file:///d:/os/src/memory/paging.rs#L311"><code>AddressSpace::map_range</code></a>) to map the entire physical framebuffer into Hydra's autonomous PML4 page table.
+4. Integrates a lightweight <strong>8x16 bitmap font engine</strong> covering all printable ASCII characters.
+5. Runs an <strong>autonomous text-mode terminal emulator</strong> directly on the pixel buffer, enabling <code>print!</code>, <code>println!</code>, colors, line wrapping, and hardware-accelerated vertical scrolling independent of UEFI firmware.</p>
+<hr />
+<h2>2. Video Architecture &amp; Data Flow</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">graph</span><span class="w"> </span><span class="n">TD</span>
+<span class="w">    </span><span class="n">A</span><span class="p">[</span><span class="n">UEFI</span><span class="w"> </span><span class="n">Firmware</span><span class="w"> </span><span class="n">POST</span><span class="p">]</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">B</span><span class="p">[</span><span class="n">uefi</span><span class="o">::</span><span class="n">proto</span><span class="o">::</span><span class="n">console</span><span class="o">::</span><span class="n">gop</span><span class="o">::</span><span class="n">GraphicsOutput</span><span class="p">]</span>
+<span class="w">    </span><span class="n">B</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">C</span><span class="p">[</span><span class="n">init_gop</span><span class="o">:</span><span class="w"> </span><span class="n">Extract</span><span class="w"> </span><span class="n">Base</span><span class="w"> </span><span class="n">PhysAddr</span><span class="p">,</span><span class="w"> </span><span class="n">Resolution</span><span class="p">,</span><span class="w"> </span><span class="n">Stride</span><span class="p">,</span><span class="w"> </span><span class="n">RGB</span><span class="o">/</span><span class="n">BGR</span><span class="p">]</span>
+<span class="w">    </span><span class="n">C</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">D</span><span class="p">[</span><span class="n">VMM</span><span class="o">:</span><span class="w"> </span><span class="n">AddressSpace</span><span class="o">::</span><span class="n">map_range</span><span class="w"> </span><span class="n">Framebuffer</span><span class="w"> </span><span class="n">into</span><span class="w"> </span><span class="n">Autonomous</span><span class="w"> </span><span class="n">PML4</span><span class="p">]</span>
+<span class="w">    </span><span class="n">D</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">E</span><span class="p">[</span><span class="n">Framebuffer</span><span class="o">:</span><span class="w"> </span><span class="n">Direct</span><span class="w"> </span><span class="n">Pixel</span><span class="w"> </span><span class="n">Access</span><span class="p">,</span><span class="w"> </span><span class="n">Rect</span><span class="w"> </span><span class="n">Fill</span><span class="p">,</span><span class="w"> </span><span class="n">Glyph</span><span class="w"> </span><span class="n">Blitting</span><span class="p">]</span>
+<span class="w">    </span><span class="n">E</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">F</span><span class="p">[</span><span class="n">VideoConsole</span><span class="o">:</span><span class="w"> </span><span class="mi">8</span><span class="n">x16</span><span class="w"> </span><span class="n">Text</span><span class="w"> </span><span class="n">Matrix</span><span class="p">,</span><span class="w"> </span><span class="n">Scrolling</span><span class="p">,</span><span class="w"> </span><span class="n">Colors</span><span class="p">]</span>
+<span class="w">    </span><span class="n">F</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">G</span><span class="p">[</span><span class="n">Unified</span><span class="w"> </span><span class="n">Console</span><span class="o">:</span><span class="w"> </span><span class="n">stdout</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">Framebuffer</span><span class="w"> </span><span class="n">Synchronous</span><span class="w"> </span><span class="n">Rendering</span><span class="p">]</span>
+<span class="w">    </span><span class="n">G</span><span class="w"> </span><span class="o">--&gt;</span><span class="w"> </span><span class="n">H</span><span class="p">[</span><span class="n">ExitBootServices</span><span class="w"> </span><span class="n">Ready</span><span class="o">:</span><span class="w"> </span><span class="n">Display</span><span class="w"> </span><span class="n">Output</span><span class="w"> </span><span class="n">Persists</span><span class="w"> </span><span class="n">Standalone</span><span class="p">]</span>
+</code></pre></div>
+
+<hr />
+<h2>3. Module Breakdown</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Source File</th>
+<th style="text-align: left;">Role &amp; Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><a href="file:///d:/os/src/video/gop.rs"><code>src/video/gop.rs</code></a></td>
+<td style="text-align: left;">Hardware discovery via UEFI GOP, physical framebuffer extraction, and VMM page mapping.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="file:///d:/os/src/video/font.rs"><code>src/video/font.rs</code></a></td>
+<td style="text-align: left;">8x16 ASCII bitmap font table covering characters 32 to 126.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="file:///d:/os/src/video/framebuffer.rs"><code>src/video/framebuffer.rs</code></a></td>
+<td style="text-align: left;">Direct linear pixel buffer controller: <code>put_pixel</code>, <code>fill_rect</code>, <code>clear</code>, <code>draw_char</code>, <code>draw_string</code>, and <code>scroll_up</code> (<code>core::ptr::copy</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="file:///d:/os/src/video/console.rs"><code>src/video/console.rs</code></a></td>
+<td style="text-align: left;">Autonomous text terminal running on the pixel buffer. Implements <code>core::fmt::Write</code>, cursor management, line wrapping, and color mapping.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="file:///d:/os/src/video/mod.rs"><code>src/video/mod.rs</code></a></td>
+<td style="text-align: left;">Video subsystem coordinator and public API exports.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>4. Interactive Shell Inspection &amp; Testing</h2>
+<p>Hydra provides the <code>video</code> (aliases: <code>gop</code>, <code>fb</code>) command in the shell:</p>
+<div class="codehilite"><pre><span></span><code>hydra&gt; video info
+Hardware Video Subsystem &amp; Framebuffer Statistics:
+  Driver Status:      ONLINE (Direct GOP Linear Framebuffer)
+  Resolution:         1024 x 768 pixels (32 bpp)
+  Pixel Stride:       1024 pixels/scanline (4096 bytes)
+  Pixel Encoding:     BGR888 (Little-Endian)
+  Video Memory Base:  0xe0000000
+  Framebuffer Size:   3145728 bytes (3 MiB)
+  Text Terminal Grid: 128 columns x 48 rows (8x16 font)
+  Kernel VMM Status:  Identity-mapped in Hydra Autonomous PML4
+
+hydra&gt; video test
+[+] Graphical test pattern &amp; Wayland preview window rendered to screen.
+
+hydra&gt; video clear
+[+] Framebuffer display cleared.
+</code></pre></div>
+</div>
+
+
+
 <div id="doc-boot-stage9-shell" class="doc-section">
-    <div class="section-stage-badge">Stage 9: Interactive Shell &bull; Boot Sequence Order #19</div>
+    <div class="section-stage-badge">Stage 9: Interactive Shell &bull; Boot Sequence Order #20</div>
     <h1>Interactive Microkernel Shell Documentation</h1>
 <ul>
 <li><strong>Source Directory</strong>: <a href="file:///d:/os/src/shell/"><code>src/shell/</code></a></li>

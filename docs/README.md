@@ -27,6 +27,7 @@ docs/
     ├── capability/
     │   ├── mod.md                 # Capability types & Rights bitflags (src/capability/mod.rs)
     │   └── table.md               # Task capability table & CSpace (src/capability/table.rs)
+    ├── video.md                   # Hardware GOP display driver & framebuffer console (src/video/)
     ├── shell.md                   # Interactive microkernel shell & command REPL (src/shell.rs)
     └── ipc/
         ├── mod.md                 # IPC subsystem root (src/ipc/mod.rs)
@@ -42,6 +43,7 @@ docs/
 | :--- | :--- | :--- | :--- |
 | **Boot & Main** | [`src/main.rs`](file:///d:/os/src/main.rs) | [docs/src/main.md](file:///d:/os/docs/src/main.md) | Entry point, boot sequence, hardware diagnostics, and panic handler. |
 | **Console I/O** | [`src/console.rs`](file:///d:/os/src/console.rs) | [docs/src/console.md](file:///d:/os/docs/src/console.md) | Thread-safe `print!` / `println!` macros, keyboard input, screen formatting. |
+| **Video & GOP** | [`src/video/`](file:///d:/os/src/video) | [docs/src/video.md](file:///d:/os/docs/src/video.md) | UEFI GOP linear framebuffer, 8x16 bitmap font, and standalone graphical console. |
 | **Interactive Shell**| [`src/shell.rs`](file:///d:/os/src/shell.rs) | [docs/src/shell.md](file:///d:/os/docs/src/shell.md) | Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing. |
 | **GDT & TSS** | [`src/arch/gdt.rs`](file:///d:/os/src/arch/gdt.rs) | [docs/src/arch/gdt.md](file:///d:/os/docs/src/arch/gdt.md) | Ring 0 / Ring 3 privilege levels, Task State Segment, double-fault stack. |
 | **CPU Control** | [`src/arch/cpu.rs`](file:///d:/os/src/arch/cpu.rs) | [docs/src/arch/cpu.md](file:///d:/os/docs/src/arch/cpu.md) | Control registers (`CR0`, `CR2`, `CR3`, `CR4`), paging roots. |

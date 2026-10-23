@@ -11,6 +11,8 @@ pub mod fs;
 pub mod ipc;
 pub mod memory;
 pub mod shell;
+pub mod video;
+
 
 use core::panic::PanicInfo;
 use uefi::prelude::*;
@@ -185,10 +187,44 @@ fn main() -> Status {
         }
     }
 
+    // 4b. Hardware Display Discovery: UEFI Graphics Output Protocol (GOP)
+    console::set_color(Color::Yellow, Color::Black);
+    println!("\n[*] Step 3b: Initializing UEFI GOP Framebuffer & Standalone Console...");
+    match video::init_gop() {
+        Ok(info) => {
+            console::set_color(Color::LightGreen, Color::Black);
+            println!("[+] Hardware Linear Framebuffer Online:");
+            println!("    - Resolution:   {}x{} (32 bpp)", info.width, info.height);
+            println!("    - Stride/Pitch: {} pixels/line ({} bytes)", info.stride, info.stride * 4);
+            println!(
+                "    - Pixel Format: {}",
+                if info.is_bgr {
+                    "BGR888 (Little-Endian)"
+                } else {
+                    "RGB888"
+                }
+            );
+            println!(
+                "    - Video RAM:    {:#x} ({} MiB)",
+                info.base_ptr as u64,
+                info.size / (1024 * 1024)
+            );
+            println!(
+                "    - Text Matrix:  {} columns x {} rows (8x16 font)",
+                info.text_cols, info.text_rows
+            );
+            println!("    - VMM Mapping:  Identity-mapped in Hydra Autonomous PML4");
+        }
+        Err(e) => {
+            console::set_color(Color::Yellow, Color::Black);
+            println!("[-] GOP not available: {} (fallback to UEFI text console)", e);
+        }
+    }
 
     // 5. Capability-Based Security Model
     console::set_color(Color::Yellow, Color::Black);
     println!("\n[*] Step 4: Initializing Task Capability Space...");
+
     let mut cap_table = CapabilityTable::new();
     let root_cap = Capability::new(
         CapType::AddressSpace {

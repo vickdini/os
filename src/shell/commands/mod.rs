@@ -16,6 +16,7 @@ pub mod script;
 pub mod status;
 pub mod time;
 pub mod translate;
+pub mod video;
 pub mod zfs_cmds;
 
 use crate::shell::command::Command;
@@ -45,6 +46,7 @@ pub use script::ShCommand;
 pub use status::StatusCommand;
 pub use time::TimeCommand;
 pub use translate::{MapCommand, TranslateCommand, UnmapCommand};
+pub use video::VideoCommand;
 pub use zfs_cmds::{ZfsCommand, ZpoolCommand};
 
 /// Static registry of all built-in commands and integrated programs.
@@ -100,6 +102,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &TranslateCommand,
     &MapCommand,
     &UnmapCommand,
+    &VideoCommand,
     &CapsCommand,
     &CapInsertCommand,
     &CapRevokeCommand,

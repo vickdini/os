@@ -165,6 +165,13 @@ DOCS_ORDER = [
         "subtitle": "Microkernel ZFS File Server (Endpoint 0x20), CoW Merkle tree, Fletcher-4 checksums, and datasets.",
     },
     {
+        "stage": "Stage 8b: Hardware Video & Framebuffer",
+        "title": "Hardware Video Driver & Framebuffer Console",
+        "file": "docs/src/video.md",
+        "anchor": "doc-boot-stage8b-video",
+        "subtitle": "UEFI GOP linear framebuffer discovery, 8x16 bitmap font, and autonomous pixel console.",
+    },
+    {
         "stage": "Stage 9: Interactive Shell",
         "title": "Interactive Microkernel Shell & Command REPL",
         "file": "docs/src/shell.md",

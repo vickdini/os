@@ -168,13 +168,48 @@ impl Console {
     }
 }
 
+pub fn color_to_rgb(c: Color) -> (u8, u8, u8) {
+    match c {
+        Color::Black => (0, 0, 0),
+        Color::Blue => (0, 0, 170),
+        Color::Green => (0, 170, 0),
+        Color::Cyan => (0, 170, 170),
+        Color::Red => (170, 0, 0),
+        Color::Magenta => (170, 0, 170),
+        Color::Brown => (170, 85, 0),
+        Color::LightGray => (170, 170, 170),
+        Color::DarkGray => (85, 85, 85),
+        Color::LightBlue => (85, 85, 255),
+        Color::LightGreen => (85, 255, 85),
+        Color::LightCyan => (85, 255, 255),
+        Color::LightRed => (255, 85, 85),
+        Color::LightMagenta => (255, 85, 255),
+        Color::Yellow => (255, 255, 85),
+        Color::White => (255, 255, 255),
+    }
+}
+
+static USE_STANDALONE_VIDEO: Mutex<bool> = Mutex::new(false);
+
+pub fn enable_standalone_video(enabled: bool) {
+    *USE_STANDALONE_VIDEO.lock() = enabled;
+}
+
+pub fn is_standalone_video() -> bool {
+    *USE_STANDALONE_VIDEO.lock()
+}
+
 impl Write for Console {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let attr = self.current_attr;
         self.scrollback.push_str(s, attr);
-        uefi::system::with_stdout(|stdout| {
-            let _ = stdout.write_str(s);
-        });
+        if is_standalone_video() {
+            crate::video::console::write_str(s);
+        } else {
+            uefi::system::with_stdout(|stdout| {
+                let _ = stdout.write_str(s);
+            });
+        }
         Ok(())
     }
 }
@@ -184,16 +219,25 @@ pub fn set_color(foreground: Color, background: Color) {
         let mut console = CONSOLE.lock();
         console.current_attr = color_to_u8(foreground) | (color_to_u8(background) << 4);
     }
-    uefi::system::with_stdout(|stdout| {
-        let _ = stdout.set_color(foreground, background);
-    });
+    if is_standalone_video() {
+        crate::video::console::set_colors(color_to_rgb(foreground), color_to_rgb(background));
+    } else {
+        uefi::system::with_stdout(|stdout| {
+            let _ = stdout.set_color(foreground, background);
+        });
+    }
 }
 
 pub fn clear_screen() {
-    uefi::system::with_stdout(|stdout| {
-        let _ = stdout.clear();
-    });
+    if is_standalone_video() {
+        crate::video::console::clear_screen();
+    } else {
+        uefi::system::with_stdout(|stdout| {
+            let _ = stdout.clear();
+        });
+    }
 }
+
 
 pub fn probe_scancode(s: ScanCode) -> u16 {
     s.0
