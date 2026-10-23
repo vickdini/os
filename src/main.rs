@@ -50,6 +50,20 @@ fn main() -> Status {
     console::set_color(Color::LightGreen, Color::Black);
     println!("[+] GDT loaded successfully.");
 
+    // 1b. IDT & Hardware Exception Gates Setup
+    console::set_color(Color::Yellow, Color::Black);
+    println!("\n[*] Step 1b: Initializing IDT & Exception Handling Gates...");
+    arch::idt::init();
+    console::set_color(Color::LightGreen, Color::Black);
+    println!("[+] IDT loaded successfully (256 gates, double-fault IST stack attached).");
+
+    // Test CPU exception dispatch with non-fatal breakpoint trap
+    unsafe {
+        core::arch::asm!("int3");
+    }
+    console::set_color(Color::LightGreen, Color::Black);
+    println!("[+] CPU exception dispatch verified: resumed cleanly from #BP trap.");
+
     // 2. CPU State
     let cpu = arch::cpu::read_state();
     console::set_color(Color::White, Color::Black);

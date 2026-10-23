@@ -119,6 +119,35 @@ impl Command for PanicCommand {
     }
 }
 
+pub struct TrapCommand;
+
+impl Command for TrapCommand {
+    fn name(&self) -> &'static str {
+        "trap"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["int3", "breakpoint"]
+    }
+
+    fn description(&self) -> &'static str {
+        "Trigger an intentional CPU breakpoint exception (#BP) to test IDT routing"
+    }
+
+    fn usage(&self) -> &'static str {
+        "trap"
+    }
+
+    fn execute(&self, _args: &[&str], _state: &mut ShellState) {
+        println!("[*] Executing INT3 instruction to test IDT breakpoint trap...");
+        unsafe {
+            core::arch::asm!("int3");
+        }
+        set_color(Color::LightGreen, Color::Black);
+        println!("[+] Resumed successfully from #BP exception handler!");
+    }
+}
+
 pub struct ScrollLockCommand;
 
 impl Command for ScrollLockCommand {

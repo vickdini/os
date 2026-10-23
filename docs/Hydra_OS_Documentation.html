@@ -418,6 +418,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <li class="toc-stage-header">Stage 3: CPU Architecture</li>
 <li class="toc-item"><a href="#doc-boot-stage3-mod" class="toc-link"><span class="toc-title">Architecture Abstraction Layer</span><span class="toc-sub">Hardware isolation layer separating processor specifics from microkernel core.</span></a></li>
 <li class="toc-item"><a href="#doc-boot-stage3-gdt" class="toc-link"><span class="toc-title">Global Descriptor Table (GDT) & TSS</span><span class="toc-sub">Privilege levels (Ring 0 / Ring 3), Task State Segment, and Double Fault IST stack.</span></a></li>
+<li class="toc-item"><a href="#doc-boot-stage3-idt" class="toc-link"><span class="toc-title">Interrupt Descriptor Table (IDT) & Hardware Exceptions</span><span class="toc-sub">256-gate IDT, assembly exception trampolines, IST double fault isolation, and #BP/#PF dispatchers.</span></a></li>
 <li class="toc-item"><a href="#doc-boot-stage3-cpu" class="toc-link"><span class="toc-title">CPU Control Registers & Diagnostics</span><span class="toc-sub">Control register inspection (CR0 protection, CR2 fault address, CR3 PML4 root, CR4).</span></a></li>
 <li class="toc-stage-header">Stage 4: Memory Subsystem</li>
 <li class="toc-item"><a href="#doc-boot-stage4-mod" class="toc-link"><span class="toc-title">Memory Subsystem Coordinator</span><span class="toc-sub">Coordinator binding physical frame management and virtual memory translation.</span></a></li>
@@ -458,6 +459,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">arch</span><span class="o">/</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">mod</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Architecture-specific module root (src/arch/mod.rs)</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">gdt</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Global Descriptor Table, TSS &amp; Rings (src/arch/gdt.rs)</span>
+<span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">idt</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Interrupt Descriptor Table &amp; Exception Gates (src/arch/idt.rs)</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">cpu</span><span class="o">.</span><span class="n">md</span><span class="w">                 </span><span class="c1"># Control registers &amp; CPU diagnostics (src/arch/cpu.rs)</span>
 <span class="w">    </span><span class="err">│</span><span class="w">   </span><span class="err">└──</span><span class="w"> </span><span class="n">x86_64</span><span class="o">/</span>
 <span class="w">    </span><span class="err">│</span><span class="w">       </span><span class="err">└──</span><span class="w"> </span><span class="n">boot</span><span class="o">.</span><span class="n">md</span><span class="w">            </span><span class="c1"># Legacy BIOS boot assembly (header.asm, main.asm, main64.asm)</span>
@@ -518,6 +520,12 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <td style="text-align: left;"><a href="file:///d:/os/src/arch/gdt.rs"><code>src/arch/gdt.rs</code></a></td>
 <td style="text-align: left;"><a href="#doc-boot-stage3-gdt">docs/src/arch/gdt.md</a></td>
 <td style="text-align: left;">Ring 0 / Ring 3 privilege levels, Task State Segment, double-fault stack.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>IDT &amp; Traps</strong></td>
+<td style="text-align: left;"><a href="file:///d:/os/src/arch/idt.rs"><code>src/arch/idt.rs</code></a></td>
+<td style="text-align: left;"><a href="#doc-boot-stage3-idt">docs/src/arch/idt.md</a></td>
+<td style="text-align: left;">256-gate IDT, assembly exception trampolines, IST double fault isolation, #BP/#PF dispatchers.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>CPU Control</strong></td>
@@ -613,6 +621,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <li><strong>CPU Architecture &amp; Hardware Isolation (Step 1 &amp; 2)</strong>:
    - <a href="#doc-boot-stage3-mod">Architecture Abstraction Layer</a> (Hardware abstraction root)
    - <a href="#doc-boot-stage3-gdt">Global Descriptor Table (GDT) &amp; TSS</a> (Ring 0 / Ring 3 privilege levels, Task State Segment, Double Fault IST stack)
+   - <a href="#doc-boot-stage3-idt">Interrupt Descriptor Table (IDT) &amp; Hardware Exceptions</a> (256-gate IDT, assembly trampolines, IST double-fault stack, #BP/#PF traps)
    - <a href="#doc-boot-stage3-cpu">CPU Control Registers &amp; Diagnostics</a> (CR0 protection, CR2 fault addresses, CR3 PML4 paging root, CR4 extensions)</li>
 <li><strong>Physical &amp; Virtual Memory Management (Step 3 &amp; 4)</strong>:
    - <a href="#doc-boot-stage3-mod">Memory Subsystem Coordinator</a> (Memory management root)
@@ -1027,8 +1036,152 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 
-<div id="doc-boot-stage3-cpu" class="doc-section">
+<div id="doc-boot-stage3-idt" class="doc-section">
     <div class="section-stage-badge">Stage 3: CPU Architecture &bull; Boot Sequence Order #08</div>
+    <h1>Interrupt Descriptor Table (IDT) &amp; Hardware Exceptions</h1>
+<ul>
+<li><strong>Source File</strong>: <a href="file:///d:/os/src/arch/idt.rs"><code>src/arch/idt.rs</code></a></li>
+<li><strong>Subsystem</strong>: Architecture / CPU Exception Handling &amp; Interrupt Routing</li>
+</ul>
+<hr />
+<h2>1. Conceptual Overview</h2>
+<p>The <strong>Interrupt Descriptor Table (IDT)</strong> is the x86_64 CPU hardware mechanism that dictates how the processor responds to asynchronous interrupts and synchronous software/hardware exceptions. </p>
+<p>Each entry in the table is a 16-byte gate descriptor defining:
+1. <strong>Target Handler Address</strong>: The 64-bit instruction pointer (<code>RIP</code>) to jump to when the vector fires.
+2. <strong>Segment Selector</strong>: The GDT code segment selector (Hydra Ring 0 Kernel Code Segment).
+3. <strong>Gate Type &amp; DPL</strong>: Descriptor Privilege Level (DPL 0 for kernel-only hardware exceptions; DPL 3 for userland-callable traps like <code>int3</code>).
+4. <strong>Interrupt Stack Table (IST)</strong>: Optional alternate stack pointer index (1..=7) in the TSS, ensuring critical faults execute on guaranteed uncorrupted stack frames.</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">+----------------------------------------------------------------------------+</span>
+<span class="c">|                   CPU Interrupt Descriptor Table (IDT)                     |</span>
+<span class="nb">+----------------------------------------------------------------------------+</span>
+<span class="c">| Vector 0</span><span class="nt">..</span><span class="c">31  : CPU Hardware Exceptions (#DE</span><span class="nt">,</span><span class="c"> #DB</span><span class="nt">,</span><span class="c"> #BP</span><span class="nt">,</span><span class="c"> #UD</span><span class="nt">,</span><span class="c"> #DF</span><span class="nt">,</span><span class="c"> #GP</span><span class="nt">,</span><span class="c"> #PF)|</span>
+<span class="c">| Vector 32</span><span class="nt">..</span><span class="c">47 : Legacy Hardware IRQs (PIC / IO</span><span class="nb">-</span><span class="c">APIC)                       |</span>
+<span class="c">| Vector 48</span><span class="nt">..</span><span class="c">255: APIC Timers</span><span class="nt">,</span><span class="c"> IPIs</span><span class="nt">,</span><span class="c"> Inter</span><span class="nb">-</span><span class="c">Core Signaling</span><span class="nt">,</span><span class="c"> System Traps      |</span>
+<span class="nb">+----------------------------------------------------------------------------+</span>
+<span class="c">                                     |</span>
+<span class="c">                                     v</span>
+<span class="c">                       </span><span class="k">[</span><span class="c">Assembly Trampoline Layer</span><span class="k">]</span>
+<span class="c">                                     |</span>
+<span class="c">                                     v</span>
+<span class="c">                   </span><span class="k">[</span><span class="c">Rust Dispatcher: hydra_exception_handler</span><span class="k">]</span>
+</code></pre></div>
+
+<hr />
+<h2>2. 64-Bit Interrupt Gate Structure</h2>
+<p>In Long Mode (64-bit), each IDT descriptor is 16 bytes:</p>
+<div class="codehilite"><pre><span></span><code><span class="c"> 127                                      96 95                     64</span>
+<span class="nb">+-------------------------------------------+-------------------------+</span>
+<span class="c">|                  Reserved                 |     Offset 63</span><span class="nt">..</span><span class="c">32       |</span>
+<span class="nb">+-------------------------------------------+-------------------------+</span>
+<span class="c"> 63       48 47   46 45 44 40 39  35 34  32 31                      0</span>
+<span class="nb">+-----------+---+------+-----+------+------+-------------------------+</span>
+<span class="c">| Offset    | P | DPL  |  0  | Type | 000  | IST  | GDT Selector | Offset 15</span><span class="nt">..</span><span class="c">0 |</span>
+<span class="c">|  31</span><span class="nt">..</span><span class="c">16   |   |      |     | 1110 |      |      |              |              |</span>
+<span class="nb">+-----------+---+------+-----+------+------+-------------------------+</span>
+</code></pre></div>
+
+<p>Hydra models this with <code>#[repr(C, packed)] pub struct IdtEntry</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="cp">#[repr(C, packed)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">IdtEntry</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">offset_low</span><span class="p">:</span><span class="w"> </span><span class="kt">u16</span><span class="p">,</span>
+<span class="w">    </span><span class="n">selector</span><span class="p">:</span><span class="w"> </span><span class="kt">u16</span><span class="p">,</span>
+<span class="w">    </span><span class="n">ist</span><span class="p">:</span><span class="w"> </span><span class="kt">u8</span><span class="p">,</span>
+<span class="w">    </span><span class="n">type_attr</span><span class="p">:</span><span class="w"> </span><span class="kt">u8</span><span class="p">,</span>
+<span class="w">    </span><span class="n">offset_mid</span><span class="p">:</span><span class="w"> </span><span class="kt">u16</span><span class="p">,</span>
+<span class="w">    </span><span class="n">offset_high</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">,</span>
+<span class="w">    </span><span class="n">reserved</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<hr />
+<h2>3. Trampoline Layer &amp; Calling Convention</h2>
+<h3>Hardware Exception Frame Variations</h3>
+<p>When a CPU exception occurs:
+- Some exceptions push an <strong>Error Code</strong> automatically (<code>#DF</code>, <code>#TS</code>, <code>#NP</code>, <code>#SS</code>, <code>#GP</code>, <code>#PF</code>, <code>#AC</code>).
+- Other exceptions push <strong>no Error Code</strong> (<code>#DE</code>, <code>#DB</code>, <code>#BP</code>, <code>#OF</code>, <code>#UD</code>, <code>#NM</code>).</p>
+<p>To provide a uniform C-compatible context to Rust, assembly macros dynamically push a dummy zero for exceptions that lack hardware error codes:</p>
+<div class="codehilite"><pre><span></span><code><span class="nf">.macro</span><span class="w"> </span><span class="nv">TRAP_NO_ERRCODE</span><span class="w"> </span><span class="nv">name</span><span class="p">,</span><span class="w"> </span><span class="nv">vec</span>
+<span class="nf">.global</span><span class="w"> </span><span class="err">\</span><span class="nv">name</span>
+<span class="err">\</span><span class="nl">name:</span>
+<span class="w">    </span><span class="nf">push</span><span class="w"> </span><span class="mi">0</span><span class="w">                  </span><span class="o">//</span><span class="w"> </span><span class="nv">Dummy</span><span class="w"> </span><span class="nv">error</span><span class="w"> </span><span class="nv">code</span>
+<span class="w">    </span><span class="nf">push</span><span class="w"> </span><span class="err">\</span><span class="nv">vec</span><span class="w">               </span><span class="o">//</span><span class="w"> </span><span class="nv">Vector</span><span class="w"> </span><span class="nv">number</span>
+<span class="w">    </span><span class="nf">jmp</span><span class="w"> </span><span class="nv">common_trap_handler</span>
+<span class="nf">.endm</span>
+
+<span class="nf">.macro</span><span class="w"> </span><span class="nv">TRAP_ERRCODE</span><span class="w"> </span><span class="nv">name</span><span class="p">,</span><span class="w"> </span><span class="nv">vec</span>
+<span class="nf">.global</span><span class="w"> </span><span class="err">\</span><span class="nv">name</span>
+<span class="err">\</span><span class="nl">name:</span>
+<span class="w">    </span><span class="nf">push</span><span class="w"> </span><span class="err">\</span><span class="nv">vec</span><span class="w">               </span><span class="o">//</span><span class="w"> </span><span class="nv">Vector</span><span class="w"> </span><span class="nv">number</span><span class="w"> </span><span class="p">(</span><span class="nv">error</span><span class="w"> </span><span class="nv">code</span><span class="w"> </span><span class="nv">already</span><span class="w"> </span><span class="nv">pushed</span><span class="w"> </span><span class="nv">by</span><span class="w"> </span><span class="nv">CPU</span><span class="p">)</span>
+<span class="w">    </span><span class="nf">jmp</span><span class="w"> </span><span class="nv">common_trap_handler</span>
+<span class="nf">.endm</span>
+</code></pre></div>
+
+<h3>Stack Frame (<code>ExceptionContext</code>)</h3>
+<p>The assembly trampoline pushes all 15 general-purpose registers, creating a complete <code>ExceptionContext</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="cp">#[repr(C)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">ExceptionContext</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">r15</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">r14</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">r13</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">r12</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rbp</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">rbx</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">r11</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">r10</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">r9</span><span class="p">:</span><span class="w">  </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">r8</span><span class="p">:</span><span class="w">  </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">rdi</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">rsi</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rdx</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">rcx</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">rax</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">vector</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">error_code</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rip</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">cs</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">rflags</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">rsp</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span><span class="w"> </span><span class="k">pub</span><span class="w"> </span><span class="n">ss</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>UEFI &amp; SysV Calling Convention Compatibility</h3>
+<p>Because Hydra targets UEFI (<code>x86_64-unknown-uefi</code>) while maintaining Unix microkernel foundations, the dispatcher assembly sets up argument passing for both conventions simultaneously:</p>
+<div class="codehilite"><pre><span></span><code><span class="w">    </span><span class="nf">mov</span><span class="w"> </span><span class="nb">rcx</span><span class="p">,</span><span class="w"> </span><span class="nb">rsp</span><span class="w">            </span><span class="o">//</span><span class="w"> </span><span class="mi">1</span><span class="nv">st</span><span class="w"> </span><span class="nv">argument</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">Microsoft</span><span class="w"> </span><span class="nv">x64</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="nv">UEFI</span><span class="w"> </span><span class="nv">ABI</span>
+<span class="w">    </span><span class="nf">mov</span><span class="w"> </span><span class="nb">rdi</span><span class="p">,</span><span class="w"> </span><span class="nb">rsp</span><span class="w">            </span><span class="o">//</span><span class="w"> </span><span class="mi">1</span><span class="nv">st</span><span class="w"> </span><span class="nv">argument</span><span class="w"> </span><span class="nv">in</span><span class="w"> </span><span class="nv">System</span><span class="w"> </span><span class="nv">V</span><span class="w"> </span><span class="nv">AMD64</span><span class="w"> </span><span class="nv">ABI</span>
+<span class="w">    </span><span class="nf">sub</span><span class="w"> </span><span class="nb">rsp</span><span class="p">,</span><span class="w"> </span><span class="mi">32</span><span class="w">             </span><span class="o">//</span><span class="w"> </span><span class="nv">Allocate</span><span class="w"> </span><span class="mi">32</span><span class="o">-</span><span class="kt">byte</span><span class="w"> </span><span class="nv">shadow</span><span class="w"> </span><span class="nv">store</span><span class="w"> </span><span class="p">(</span><span class="nv">Win64</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="nv">align</span><span class="w"> </span><span class="nv">stack</span>
+<span class="w">    </span><span class="nf">call</span><span class="w"> </span><span class="nv">hydra_exception_handler</span>
+<span class="w">    </span><span class="nf">add</span><span class="w"> </span><span class="nb">rsp</span><span class="p">,</span><span class="w"> </span><span class="mi">32</span><span class="w">             </span><span class="o">//</span><span class="w"> </span><span class="nv">Deallocate</span><span class="w"> </span><span class="nv">shadow</span><span class="w"> </span><span class="nv">store</span>
+<span class="w">    </span><span class="nf">pop</span><span class="w"> </span><span class="nb">r15</span><span class="nv">..rax</span><span class="w">            </span><span class="o">//</span><span class="w"> </span><span class="nv">Restore</span><span class="w"> </span><span class="nv">registers</span>
+<span class="w">    </span><span class="nf">add</span><span class="w"> </span><span class="nb">rsp</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="w">             </span><span class="o">//</span><span class="w"> </span><span class="nv">Clean</span><span class="w"> </span><span class="nv">up</span><span class="w"> </span><span class="nv">vector</span><span class="w"> </span><span class="nv">and</span><span class="w"> </span><span class="nv">error</span><span class="w"> </span><span class="nv">code</span>
+<span class="w">    </span><span class="nf">iretq</span><span class="w">                   </span><span class="o">//</span><span class="w"> </span><span class="nv">Return</span><span class="w"> </span><span class="nv">from</span><span class="w"> </span><span class="nv">interrupt</span>
+</code></pre></div>
+
+<hr />
+<h2>4. Exception Handlers</h2>
+<h3>Vector 3: Breakpoint (<code>#BP</code>)</h3>
+<ul>
+<li><strong>DPL</strong>: 3 (Permits Ring 3 userland processes to trigger software breakpoints with <code>int3</code>).</li>
+<li><strong>Behavior</strong>: Non-fatal diagnostic trap. Prints RIP, RFLAGS, and RSP, then resumes execution via <code>iretq</code>.</li>
+</ul>
+<h3>Vector 8: Double Fault (<code>#DF</code>)</h3>
+<ul>
+<li><strong>IST</strong>: Linked to TSS IST index 1 (<code>DOUBLE_FAULT_STACK</code>).</li>
+<li><strong>Behavior</strong>: Even if the kernel stack overflows or suffers memory corruption, the hardware forcibly switches to a dedicated 20 KiB emergency stack, preventing immediate triple-fault reboot loops.</li>
+</ul>
+<h3>Vector 13: General Protection Fault (<code>#GP</code>)</h3>
+<ul>
+<li><strong>Behavior</strong>: Decodes selector indices and privilege boundary violations.</li>
+</ul>
+<h3>Vector 14: Page Fault (<code>#PF</code>)</h3>
+<ul>
+<li><strong>Behavior</strong>: Reads the faulting linear memory address from hardware control register <code>CR2</code> (<code>Cr2::read_raw()</code>), and decodes the error code flags:</li>
+<li><strong>P (Bit 0)</strong>: Non-present page (0) vs Page-level protection violation (1).</li>
+<li><strong>W/R (Bit 1)</strong>: Read access (0) vs Write access (1).</li>
+<li><strong>U/S (Bit 2)</strong>: Supervisor mode (0) vs User mode (1).</li>
+<li><strong>I/D (Bit 4)</strong>: Data access (0) vs Instruction fetch (1).</li>
+</ul>
+<hr />
+<h2>5. Shell Integration &amp; Diagnostics</h2>
+<p>Hydra includes a built-in shell diagnostic command <code>trap</code> (aliased to <code>int3</code> and <code>breakpoint</code>):</p>
+<div class="codehilite"><pre><span></span><code>hydra:/&gt;<span class="w"> </span><span class="nb">trap</span>
+<span class="o">[</span>*<span class="o">]</span><span class="w"> </span>Executing<span class="w"> </span>INT3<span class="w"> </span>instruction<span class="w"> </span>to<span class="w"> </span><span class="nb">test</span><span class="w"> </span>IDT<span class="w"> </span>breakpoint<span class="w"> </span>trap...
+
+<span class="o">[</span>i<span class="o">]</span><span class="w"> </span>CPU<span class="w"> </span>BREAKPOINT<span class="w"> </span>TRAP<span class="w"> </span><span class="o">(</span><span class="c1">#BP) at RIP: 0x1f07f439</span>
+<span class="w">    </span>RFLAGS:<span class="w"> </span>0x246,<span class="w"> </span>RSP:<span class="w"> </span>0x1ee15bf0
+<span class="o">[</span>+<span class="o">]</span><span class="w"> </span>Resumed<span class="w"> </span>successfully<span class="w"> </span>from<span class="w"> </span><span class="c1">#BP exception handler!</span>
+</code></pre></div>
+</div>
+
+
+
+<div id="doc-boot-stage3-cpu" class="doc-section">
+    <div class="section-stage-badge">Stage 3: CPU Architecture &bull; Boot Sequence Order #09</div>
     <h1>CPU Control &amp; Register Diagnostics Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/arch/cpu.rs"><code>src/arch/cpu.rs</code></a></li>
@@ -1069,7 +1222,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage4-mod" class="doc-section">
-    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #09</div>
+    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #10</div>
     <h1>Memory Subsystem Overview</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/memory/mod.rs"><code>src/memory/mod.rs</code></a></li>
@@ -1091,7 +1244,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage4-frame" class="doc-section">
-    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #10</div>
+    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #11</div>
     <h1>Physical Memory &amp; Frame Allocator Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/memory/frame_allocator.rs"><code>src/memory/frame_allocator.rs</code></a></li>
@@ -1205,7 +1358,7 @@ An HTML version suitable for browser inspection or custom printing is also creat
 
 
 <div id="doc-boot-stage4-heap" class="doc-section">
-    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #11</div>
+    <div class="section-stage-badge">Stage 4: Memory Subsystem &bull; Boot Sequence Order #12</div>
     <h1>Dynamic Kernel Heap Allocator Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/memory/heap.rs"><code>src/memory/heap.rs</code></a></li>
@@ -1306,7 +1459,7 @@ hydra&gt; heap test
 
 
 <div id="doc-boot-stage5-paging" class="doc-section">
-    <div class="section-stage-badge">Stage 5: Virtual Memory &bull; Boot Sequence Order #12</div>
+    <div class="section-stage-badge">Stage 5: Virtual Memory &bull; Boot Sequence Order #13</div>
     <h1>Virtual Memory &amp; Paging Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/memory/paging.rs"><code>src/memory/paging.rs</code></a></li>
@@ -1447,7 +1600,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage6-cap-mod" class="doc-section">
-    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #13</div>
+    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #14</div>
     <h1>Capability Subsystem Overview</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/capability/mod.rs"><code>src/capability/mod.rs</code></a></li>
@@ -1558,7 +1711,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage6-cap-table" class="doc-section">
-    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #14</div>
+    <div class="section-stage-badge">Stage 6: Security & Capabilities &bull; Boot Sequence Order #15</div>
     <h1>Capability Table Module Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/capability/table.rs"><code>src/capability/table.rs</code></a></li>
@@ -1647,7 +1800,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage7-ipc-mod" class="doc-section">
-    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #15</div>
+    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #16</div>
     <h1>IPC Subsystem Overview</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/ipc/mod.rs"><code>src/ipc/mod.rs</code></a></li>
@@ -1675,7 +1828,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage7-ipc-msg" class="doc-section">
-    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #16</div>
+    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #17</div>
     <h1>IPC Message Module Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/ipc/message.rs"><code>src/ipc/message.rs</code></a></li>
@@ -1779,7 +1932,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage7-ipc-ep" class="doc-section">
-    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #17</div>
+    <div class="section-stage-badge">Stage 7: IPC Subsystem &bull; Boot Sequence Order #18</div>
     <h1>IPC Endpoint Module Documentation</h1>
 <ul>
 <li><strong>Source File</strong>: <a href="file:///d:/os/src/ipc/endpoint.rs"><code>src/ipc/endpoint.rs</code></a></li>
@@ -1889,7 +2042,7 @@ hydra&gt; unmap 0x7000000000
 
 
 <div id="doc-boot-stage8-zfs" class="doc-section">
-    <div class="section-stage-badge">Stage 8: File Server & Storage &bull; Boot Sequence Order #18</div>
+    <div class="section-stage-badge">Stage 8: File Server & Storage &bull; Boot Sequence Order #19</div>
     <h1>ZFS Microkernel File Server Documentation</h1>
 <ul>
 <li><strong>Source Directory</strong>: <a href="file:///d:/os/src/fs/zfs/"><code>src/fs/zfs/</code></a> &amp; <a href="file:///d:/os/src/fs/client.rs"><code>src/fs/client.rs</code></a></li>
@@ -2067,7 +2220,7 @@ Upon read operations, the ZFS File Server recalculates the checksum and detects 
 
 
 <div id="doc-boot-stage8b-video" class="doc-section">
-    <div class="section-stage-badge">Stage 8b: Hardware Video & Framebuffer &bull; Boot Sequence Order #19</div>
+    <div class="section-stage-badge">Stage 8b: Hardware Video & Framebuffer &bull; Boot Sequence Order #20</div>
     <h1>Hardware Video Driver &amp; GOP Framebuffer Documentation</h1>
 <ul>
 <li><strong>Source Module</strong>: <a href="file:///d:/os/src/video/"><code>src/video/</code></a></li>
@@ -2151,7 +2304,7 @@ hydra&gt; video clear
 
 
 <div id="doc-boot-stage9-shell" class="doc-section">
-    <div class="section-stage-badge">Stage 9: Interactive Shell &bull; Boot Sequence Order #20</div>
+    <div class="section-stage-badge">Stage 9: Interactive Shell &bull; Boot Sequence Order #21</div>
     <h1>Interactive Microkernel Shell Documentation</h1>
 <ul>
 <li><strong>Source Directory</strong>: <a href="file:///d:/os/src/shell/"><code>src/shell/</code></a></li>

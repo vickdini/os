@@ -89,6 +89,13 @@ DOCS_ORDER = [
     },
     {
         "stage": "Stage 3: CPU Architecture",
+        "title": "Interrupt Descriptor Table (IDT) & Hardware Exceptions",
+        "file": "docs/src/arch/idt.md",
+        "anchor": "doc-boot-stage3-idt",
+        "subtitle": "256-gate IDT, assembly exception trampolines, IST double fault isolation, and #BP/#PF dispatchers.",
+    },
+    {
+        "stage": "Stage 3: CPU Architecture",
         "title": "CPU Control Registers & Diagnostics",
         "file": "docs/src/arch/cpu.md",
         "anchor": "doc-boot-stage3-cpu",
