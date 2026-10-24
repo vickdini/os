@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use super::spa::Spa;
 use super::types::{DnodePhys, DnodeType};
 use super::zap::ZapDirectory;
@@ -106,7 +107,7 @@ impl Snapshot {
 /// Manages the Object Set (MOS and datasets), dnodes, and ZAP directories.
 pub struct Dmu {
     pub dnodes: [DnodePhys; MAX_OBJECTS],
-    pub zap_dirs: [ZapDirectory; MAX_OBJECTS],
+    pub zap_dirs: Box<[ZapDirectory]>,
     pub datasets: [Dataset; MAX_DATASETS],
     pub snapshots: [Snapshot; MAX_SNAPSHOTS],
     pub next_obj_id: u64,
@@ -116,7 +117,7 @@ impl Dmu {
     pub fn new() -> Self {
         let mut dmu = Self {
             dnodes: [DnodePhys::empty(); MAX_OBJECTS],
-            zap_dirs: [ZapDirectory::new(); MAX_OBJECTS],
+            zap_dirs: alloc::vec![ZapDirectory::new(); MAX_OBJECTS].into_boxed_slice(),
             datasets: [Dataset::empty(); MAX_DATASETS],
             snapshots: [Snapshot::empty(); MAX_SNAPSHOTS],
             next_obj_id: 1, // 0 is reserved for MOS root

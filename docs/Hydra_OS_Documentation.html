@@ -441,8 +441,11 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <li class="toc-item"><a href="#doc-boot-stage8-zfs" class="toc-link"><span class="toc-title">ZFS Microkernel File Server Architecture</span><span class="toc-sub">Microkernel ZFS File Server (Endpoint 0x20), CoW Merkle tree, Fletcher-4 checksums, and datasets.</span></a></li>
 <li class="toc-stage-header">Stage 8b: Hardware Video & Framebuffer</li>
 <li class="toc-item"><a href="#doc-boot-stage8b-video" class="toc-link"><span class="toc-title">Hardware Video Driver & Framebuffer Console</span><span class="toc-sub">UEFI GOP linear framebuffer discovery, 8x16 bitmap font, and autonomous pixel console.</span></a></li>
-<li class="toc-stage-header">Stage 9: Interactive Shell</li>
-<li class="toc-item"><a href="#doc-boot-stage9-shell" class="toc-link"><span class="toc-title">Interactive Microkernel Shell & Command REPL</span><span class="toc-sub">Command REPL, real-time memory/CPU inspection, CSpace manipulation, ZFS commands, and IPC testing.</span></a></li>
+<li class="toc-stage-header">Stage 9: Multitasking & Scheduler</li>
+<li class="toc-item"><a href="#doc-boot-stage9-tcb" class="toc-link"><span class="toc-title">Task Control Block (TCB) & Thread State</span><span class="toc-sub">TCB architecture, register frame (TaskRegisters), lifecycle state machine, and heap stacks.</span></a></li>
+<li class="toc-item"><a href="#doc-boot-stage9-scheduler" class="toc-link"><span class="toc-title">Preemptive Multitasking & Context Switching</span><span class="toc-sub">Round-robin timeslicing at 100 Hz, iretq context switching, idle task, and task commands (ps, spawn, kill).</span></a></li>
+<li class="toc-stage-header">Stage 10: Interactive Shell</li>
+<li class="toc-item"><a href="#doc-boot-stage10-shell" class="toc-link"><span class="toc-title">Interactive Microkernel Shell & Command REPL</span><span class="toc-sub">Command REPL, real-time memory/CPU inspection, CSpace manipulation, ZFS commands, and IPC testing.</span></a></li>
     </ul>
 </div>
 
@@ -517,7 +520,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <tr>
 <td style="text-align: left;"><strong>Interactive Shell</strong></td>
 <td style="text-align: left;"><a href="file:///d:/os/src/shell.rs"><code>src/shell.rs</code></a></td>
-<td style="text-align: left;"><a href="#doc-boot-stage9-shell">docs/src/shell.md</a></td>
+<td style="text-align: left;"><a href="#doc-boot-stage10-shell">docs/src/shell.md</a></td>
 <td style="text-align: left;">Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing.</td>
 </tr>
 <tr>
@@ -647,7 +650,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
    - <a href="#doc-boot-stage7-ipc-msg">IPC Fast Register Messages</a> (4 fast inline register payload words, labels, transferred capability tokens)
    - <a href="#doc-boot-stage7-ipc-ep">IPC Endpoints &amp; Mailbox Rendezvous</a> (Circular FIFO ring buffers, rendezvous channels, thread-safe <code>SharedEndpoint</code>)</li>
 <li><strong>Interactive User Space &amp; Subsystem Diagnostics</strong>:
-   - <a href="#doc-boot-stage9-shell">Interactive Microkernel Shell</a> (Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing, RTC clock, reboot/shutdown)</li>
+   - <a href="#doc-boot-stage10-shell">Interactive Microkernel Shell</a> (Command REPL, real-time memory/CPU inspection, CSpace manipulation, IPC testing, RTC clock, reboot/shutdown)</li>
 </ol>
 <hr />
 <h2>📄 Generating the Unified Documentation PDF</h2>
@@ -2580,8 +2583,316 @@ hydra&gt; video clear
 
 
 
-<div id="doc-boot-stage9-shell" class="doc-section">
-    <div class="section-stage-badge">Stage 9: Interactive Shell &bull; Boot Sequence Order #25</div>
+<div id="doc-boot-stage9-tcb" class="doc-section">
+    <div class="section-stage-badge">Stage 9: Multitasking & Scheduler &bull; Boot Sequence Order #25</div>
+    <h1>Task Control Block (TCB) &amp; Thread State</h1>
+<h2>Overview</h2>
+<p>The <strong>Task Control Block (<code>Task</code> / <code>TCB</code>)</strong> forms the foundational abstraction of thread execution and process representation in the Hydra 64-bit microkernel. Each execution thread is managed through an independent TCB that encapsulates its unique 64-bit identifier (<code>TaskId</code>), descriptive thread label, lifecycle execution state (<code>TaskState</code>), scheduling priority (<code>TaskPriority</code>), architectural register frame (<code>TaskRegisters</code>), dedicated 16 KiB execution stack, CPU tick consumption statistics, and an isolated per-task capability security space (<code>CapabilityTable</code>).</p>
+<p>The implementation is located in <a href="file:///d:/os/src/task/tcb.rs"><code>src/task/tcb.rs</code></a> with public re-exports in <a href="file:///d:/os/src/task/mod.rs"><code>src/task/mod.rs</code></a>.</p>
+<hr />
+<h2>Architectural Context Frame (<code>TaskRegisters</code>)</h2>
+<p>When preemptive multitasking switches between tasks, the CPU architectural state must be preserved and restored with bit-exact fidelity. The <code>TaskRegisters</code> structure encapsulates all x86_64 general-purpose registers, the instruction pointer (<code>RIP</code>), code segment selector (<code>CS</code>), processor flags (<code>RFLAGS</code>), stack pointer (<code>RSP</code>), stack segment selector (<code>SS</code>), and the 4-level paging root (<code>CR3</code>).</p>
+<div class="codehilite"><pre><span></span><code><span class="cp">#[repr(C)]</span>
+<span class="cp">#[derive(Debug, Clone, Copy)]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">TaskRegisters</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">r15</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">r14</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">r13</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">r12</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rbp</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rbx</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">r11</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">r10</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">r9</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">r8</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rdi</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rsi</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rdx</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rcx</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rax</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rip</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">cs</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rflags</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">rsp</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">ss</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">cr3</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>Context Synchronization</h3>
+<p>Two symmetric methods bridge the gap between hardware interrupt frames and the kernel's scheduler data structures:</p>
+<ol>
+<li>
+<p><strong><code>save_from_context(&amp;mut self, ctx: &amp;ExceptionContext, cr3: u64)</code></strong>:
+   Captures the running thread's state directly from the stack-saved <code>ExceptionContext</code> created by the assembly interrupt gate trampoline, recording the current <code>CR3</code> paging root.</p>
+</li>
+<li>
+<p><strong><code>restore_to_context(&amp;self, ctx: &amp;mut ExceptionContext)</code></strong>:
+   Transfers the incoming thread's register frame into the active interrupt context frame on the stack. When the hardware interrupt routine exits via <code>iretq</code>, the CPU immediately restores all general-purpose registers and atomically resumes execution inside the new task.</p>
+</li>
+</ol>
+<hr />
+<h2>Thread Lifecycle State Machine (<code>TaskState</code>)</h2>
+<p>Each kernel task transitions across five discrete states during its execution lifecycle:</p>
+<div class="codehilite"><pre><span></span><code>stateDiagram-v2
+    [*] --&gt; Ready: spawn()
+    Ready --&gt; Running: Scheduler timeslice dispatch
+    Running --&gt; Ready: Timeslice expired / Preempted (100 Hz PIT)
+    Running --&gt; Sleeping: sleep_ms() / sleep_ticks()
+    Sleeping --&gt; Ready: Timer tick expiration (PIT ticks &gt;= wake_tick)
+    Running --&gt; Blocked: Capability IPC wait / rendezvous
+    Blocked --&gt; Ready: IPC message available
+    Running --&gt; Dead: exit() / return from trampoline
+    Ready --&gt; Dead: kill()
+    Sleeping --&gt; Dead: kill()
+    Blocked --&gt; Dead: kill()
+    Dead --&gt; [*]
+</code></pre></div>
+
+<h3>State Definitions</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">State</th>
+<th style="text-align: left;">Description</th>
+<th style="text-align: left;">Transition Trigger</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong><code>Ready</code></strong></td>
+<td style="text-align: left;">Thread is runnable and waiting in the run-queue for CPU allocation.</td>
+<td style="text-align: left;">Task creation, timeslice preemption, or sleep expiration.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>Running</code></strong></td>
+<td style="text-align: left;">Thread currently owns the CPU core and is executing instructions.</td>
+<td style="text-align: left;">Selected by the scheduler during context switch.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>Sleeping { wake_tick }</code></strong></td>
+<td style="text-align: left;">Thread is suspended until the hardware PIT tick counter reaches <code>wake_tick</code>.</td>
+<td style="text-align: left;">Invocation of <code>sleep_ms()</code> or <code>sleep_ticks()</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>Blocked</code></strong></td>
+<td style="text-align: left;">Thread is waiting on a capability-mediated IPC message or resource lock.</td>
+<td style="text-align: left;">Synchronous IPC rendezvous request.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>Dead</code></strong></td>
+<td style="text-align: left;">Thread has finished execution or was explicitly terminated by PID.</td>
+<td style="text-align: left;">Invocation of <code>exit()</code> or administrative <code>kill()</code>.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Task Priority Levels (<code>TaskPriority</code>)</h2>
+<p>Hydra supports three distinct priority strata:</p>
+<ol>
+<li><strong><code>High</code> (Priority 2)</strong>: Time-critical device drivers and real-time event handlers.</li>
+<li><strong><code>Normal</code> (Priority 1)</strong>: Standard userland processes, shell sessions, and background workers.</li>
+<li><strong><code>Idle</code> (Priority 0)</strong>: Lowest priority; assigned exclusively to Task 1 (<code>idle</code>). It is only scheduled when no other <code>Ready</code> thread exists in the system.</li>
+</ol>
+<hr />
+<h2>Task Control Block Layout</h2>
+<div class="codehilite"><pre><span></span><code><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">Task</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">id</span><span class="p">:</span><span class="w"> </span><span class="nc">TaskId</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="o">'</span><span class="nb">static</span><span class="w"> </span><span class="kt">str</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">state</span><span class="p">:</span><span class="w"> </span><span class="nc">TaskState</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">priority</span><span class="p">:</span><span class="w"> </span><span class="nc">TaskPriority</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">regs</span><span class="p">:</span><span class="w"> </span><span class="nc">TaskRegisters</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">stack</span><span class="p">:</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="nb">Box</span><span class="o">&lt;</span><span class="p">[</span><span class="kt">u8</span><span class="p">]</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">ticks_run</span><span class="p">:</span><span class="w"> </span><span class="kt">u64</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">timeslice_remaining</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">cspace</span><span class="p">:</span><span class="w"> </span><span class="nb">Box</span><span class="o">&lt;</span><span class="n">CapabilityTable</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>Memory Footprint Optimization &amp; Stack Safety</h3>
+<ul>
+<li><strong>Heap-Allocated CSpace</strong>: The <code>CapabilityTable</code> provides 256 capability slots (~8 KiB). In early designs, allocating this structure inline inside <code>Task</code> by value resulted in stack overflows during task creation. By storing <code>cspace: Box&lt;CapabilityTable&gt;</code>, the memory footprint of <code>Task</code> on the stack is reduced from <strong>8,256 bytes to ~168 bytes</strong>, guaranteeing zero stack smashing during deep call chains.</li>
+<li><strong>Dedicated 16 KiB Kernel Stacks</strong>: Newly spawned threads allocate <code>16,384 bytes</code> (<code>16 KiB</code>) on the 8 MiB kernel heap. The top of the stack is 16-byte aligned (<code>(stack_top &amp; !0xF)</code>), and an initial 48-byte shadow space offset is reserved to satisfy Microsoft x64 / UEFI and SysV AMD64 calling convention requirements.</li>
+</ul>
+</div>
+
+
+
+<div id="doc-boot-stage9-scheduler" class="doc-section">
+    <div class="section-stage-badge">Stage 9: Multitasking & Scheduler &bull; Boot Sequence Order #26</div>
+    <h1>Preemptive Multitasking &amp; Context Switching</h1>
+<h2>Overview</h2>
+<p>The Hydra multitasking subsystem implements a <strong>preemptive round-robin scheduler</strong> driven by the 8254 Programmable Interval Timer (PIT) firing at 100 Hz on IDT Vector 32 (IRQ 0). Multitasking enables concurrent execution of independent kernel threads, background worker tasks, and the interactive shell with transparent hardware context switching.</p>
+<p>The implementation resides in <a href="file:///d:/os/src/task/scheduler.rs"><code>src/task/scheduler.rs</code></a>, with the public API exposed through <a href="file:///d:/os/src/task/mod.rs"><code>src/task/mod.rs</code></a> and interactive shell commands in <a href="file:///d:/os/src/shell/commands/task_cmds.rs"><code>src/shell/commands/task_cmds.rs</code></a>.</p>
+<hr />
+<h2>Scheduling Architecture &amp; Timeslicing</h2>
+<p>The scheduler operates on a fixed timeslice quantum of <strong>5 PIT timer ticks (50 ms)</strong> at 100 Hz.</p>
+<div class="codehilite"><pre><span></span><code><span class="n">sequenceDiagram</span>
+<span class="w">    </span><span class="n">autonumber</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Hardware</span><span class="w"> </span><span class="n">as</span><span class="w"> </span><span class="mh">8254</span><span class="w"> </span><span class="n">PIT</span><span class="w"> </span><span class="n">Timer</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">IDT</span><span class="w"> </span><span class="n">as</span><span class="w"> </span><span class="n">IDT</span><span class="w"> </span><span class="n">Vector</span><span class="w"> </span><span class="mh">32</span><span class="w"> </span><span class="p">(</span><span class="n">IRQ</span><span class="w"> </span><span class="mh">0</span><span class="p">)</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">Sched</span><span class="w"> </span><span class="n">as</span><span class="w"> </span><span class="n">Preemptive</span><span class="w"> </span><span class="n">Scheduler</span>
+<span class="w">    </span><span class="n">participant</span><span class="w"> </span><span class="n">CPU</span><span class="w"> </span><span class="n">as</span><span class="w"> </span><span class="n">x86_64</span><span class="w"> </span><span class="n">CPU</span><span class="w"> </span><span class="n">Core</span>
+
+<span class="w">    </span><span class="n">Hardware</span><span class="o">-&gt;&gt;</span><span class="nl">IDT:</span><span class="w"> </span><span class="n">Timer</span><span class="w"> </span><span class="n">Interrupt</span><span class="w"> </span><span class="p">(</span><span class="n">every</span><span class="w"> </span><span class="mh">10</span><span class="w"> </span><span class="n">ms</span><span class="p">)</span>
+<span class="w">    </span><span class="n">IDT</span><span class="o">-&gt;&gt;</span><span class="nl">IDT:</span><span class="w"> </span><span class="nl">common_trap_handler:</span><span class="w"> </span><span class="n">Push</span><span class="w"> </span><span class="n">GPRs</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">Error</span><span class="w"> </span><span class="n">Code</span>
+<span class="w">    </span><span class="n">IDT</span><span class="o">-&gt;&gt;</span><span class="nl">Sched:</span><span class="w"> </span><span class="n">pit</span><span class="o">::</span><span class="n">on_timer_tick</span><span class="p">()</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">pic</span><span class="o">::</span><span class="n">send_eoi</span><span class="p">(</span><span class="mh">0</span><span class="p">)</span>
+<span class="w">    </span><span class="n">IDT</span><span class="o">-&gt;&gt;</span><span class="nl">Sched:</span><span class="w"> </span><span class="n">SCHEDULER</span><span class="p">.</span><span class="n">lock</span><span class="p">().</span><span class="n">schedule</span><span class="p">(</span><span class="o">&amp;</span><span class="n">mut</span><span class="w"> </span><span class="n">ExceptionContext</span><span class="p">)</span>
+<span class="w">    </span><span class="n">alt</span><span class="w"> </span><span class="n">Timeslice</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mh">1</span><span class="w"> </span><span class="n">Tick</span><span class="w"> </span><span class="n">Remaining</span>
+<span class="w">        </span><span class="n">Sched</span><span class="o">--&gt;&gt;</span><span class="nl">CPU:</span><span class="w"> </span><span class="n">timeslice_remaining</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="mh">1</span><span class="w"> </span><span class="p">(</span><span class="n">No</span><span class="w"> </span><span class="n">switch</span><span class="p">)</span>
+<span class="w">    </span><span class="k">else</span><span class="w"> </span><span class="n">Timeslice</span><span class="w"> </span><span class="n">Expired</span><span class="w"> </span><span class="p">(</span><span class="mh">0</span><span class="w"> </span><span class="n">Ticks</span><span class="p">)</span>
+<span class="w">        </span><span class="n">Sched</span><span class="o">-&gt;&gt;</span><span class="nl">Sched:</span><span class="w"> </span><span class="n">Save</span><span class="w"> </span><span class="n">active</span><span class="w"> </span><span class="k">task</span><span class="w"> </span><span class="n">registers</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">ExceptionContext</span>
+<span class="w">        </span><span class="n">Sched</span><span class="o">-&gt;&gt;</span><span class="nl">Sched:</span><span class="w"> </span><span class="n">Wake</span><span class="w"> </span><span class="n">up</span><span class="w"> </span><span class="n">sleeping</span><span class="w"> </span><span class="n">tasks</span><span class="w"> </span><span class="p">(</span><span class="n">ticks</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">wake_tick</span><span class="p">)</span>
+<span class="w">        </span><span class="n">Sched</span><span class="o">-&gt;&gt;</span><span class="nl">Sched:</span><span class="w"> </span><span class="n">Select</span><span class="w"> </span><span class="n">next</span><span class="w"> </span><span class="n">Ready</span><span class="w"> </span><span class="k">task</span><span class="w"> </span><span class="p">(</span><span class="n">Round</span><span class="o">-</span><span class="n">Robin</span><span class="p">)</span>
+<span class="w">        </span><span class="n">Sched</span><span class="o">-&gt;&gt;</span><span class="nl">Sched:</span><span class="w"> </span><span class="n">Restore</span><span class="w"> </span><span class="n">next</span><span class="w"> </span><span class="k">task</span><span class="w"> </span><span class="n">registers</span><span class="w"> </span><span class="n">into</span><span class="w"> </span><span class="n">ExceptionContext</span>
+<span class="w">        </span><span class="n">Sched</span><span class="o">--&gt;&gt;</span><span class="nl">IDT:</span><span class="w"> </span><span class="n">Return</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="n">assembly</span><span class="w"> </span><span class="n">trampoline</span>
+<span class="w">        </span><span class="n">IDT</span><span class="o">-&gt;&gt;</span><span class="nl">CPU:</span><span class="w"> </span><span class="n">Pop</span><span class="w"> </span><span class="n">GPRs</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">iretq</span><span class="w"> </span><span class="p">(</span><span class="n">Resumes</span><span class="w"> </span><span class="n">new</span><span class="w"> </span><span class="k">task</span><span class="w"> </span><span class="n">context</span><span class="p">)</span>
+<span class="w">    </span><span class="k">end</span>
+</code></pre></div>
+
+<h3>Scheduling Algorithm Details</h3>
+<ol>
+<li><strong>Sleep Accounting</strong>: On every tick, the scheduler scans all registered tasks and transitions any task in <code>TaskState::Sleeping { wake_tick }</code> back to <code>TaskState::Ready</code> if the current PIT tick count has reached or exceeded <code>wake_tick</code>.</li>
+<li><strong>Timeslice Depletion</strong>: The currently running task has its <code>ticks_run</code> counter incremented and <code>timeslice_remaining</code> decremented. If more than 1 tick remains in its timeslice, the scheduler returns immediately without context switching.</li>
+<li><strong>Round-Robin Selection</strong>: When the timeslice expires, the outgoing task's registers and <code>CR3</code> paging root are saved from <code>ExceptionContext</code>. The run-queue is scanned in two passes:
+   - <strong>Pass 1 (Normal &amp; High Priority)</strong>: Scans for the next runnable non-idle task (<code>priority &gt; Idle</code>).
+   - <strong>Pass 2 (Idle Fallback)</strong>: If no normal tasks are ready, schedules Task 1 (<code>idle</code>) to execute low-power CPU halts (<code>hlt</code>).</li>
+<li><strong>Context Switch Restoration</strong>: The chosen task's registers are written back into <code>ExceptionContext</code>, its timeslice is reset to 50 ms, and if the task has a distinct <code>CR3</code> page table, the CPU paging root is updated via <code>Cr3::write()</code>.</li>
+</ol>
+<hr />
+<h2>Hardware Context Switching via <code>iretq</code></h2>
+<p>Hydra employs an in-place stack frame modification pattern for architectural context switching:</p>
+<ol>
+<li>When IRQ 0 fires, the CPU pushes <code>SS</code>, <code>RSP</code>, <code>RFLAGS</code>, <code>CS</code>, and <code>RIP</code> onto the active stack.</li>
+<li>The assembly entry point <code>common_trap_handler</code> pushes all fifteen general-purpose registers (<code>RAX</code> through <code>R15</code>) and points <code>RSP</code> to the <code>ExceptionContext</code>.</li>
+<li><code>SCHEDULER.lock().schedule(ctx)</code> modifies the values stored inside the <code>ExceptionContext</code> on the stack.</li>
+<li>As <code>common_trap_handler</code> unwinds, <code>pop r15..rax</code> loads the incoming task's general-purpose registers.</li>
+<li>The hardware <code>iretq</code> instruction pops <code>RIP</code>, <code>CS</code>, <code>RFLAGS</code>, <code>RSP</code>, and <code>SS</code>. In 64-bit long mode, <code>iretq</code> unconditionally pops <code>RSP</code> and <code>SS</code> regardless of privilege level, atomically switching execution to the new task's stack and instruction pointer.</li>
+</ol>
+<hr />
+<h2>Task Trampoline &amp; Calling Conventions</h2>
+<p>When a newly spawned kernel thread starts execution for the first time, it does not resume from a previously interrupted state. Instead, it enters through the <strong>Task Trampoline</strong>:</p>
+<div class="codehilite"><pre><span></span><code><span class="k">extern</span><span class="w"> </span><span class="s">"C"</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">task_trampoline</span><span class="p">(</span><span class="n">entry_fn_addr</span><span class="p">:</span><span class="w"> </span><span class="kt">usize</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="o">!</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">func</span><span class="p">:</span><span class="w"> </span><span class="nc">fn</span><span class="p">()</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">unsafe</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">core</span><span class="p">::</span><span class="n">mem</span><span class="p">::</span><span class="n">transmute</span><span class="p">(</span><span class="n">entry_fn_addr</span><span class="p">)</span><span class="w"> </span><span class="p">};</span>
+<span class="w">    </span><span class="n">func</span><span class="p">();</span>
+
+<span class="w">    </span><span class="c1">// Mark task Dead upon normal function exit and yield CPU</span>
+<span class="w">    </span><span class="k">crate</span><span class="p">::</span><span class="n">task</span><span class="p">::</span><span class="n">exit</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3>ABI Alignment &amp; Register Conventions</h3>
+<ul>
+<li><strong>Win64 vs SysV Dual Argument Passing</strong>: Under the UEFI target (<code>x86_64-unknown-uefi</code>), the Microsoft x64 calling convention passes the first function argument in <strong><code>RCX</code></strong> (in contrast to SysV AMD64, which uses <code>RDI</code>). <code>spawn_internal</code> initializes both <code>regs.rcx</code> and <code>regs.rdi</code> to the entry point address to guarantee cross-ABI compatibility.</li>
+<li><strong>Shadow Space &amp; 16-Byte Stack Alignment</strong>: The initial stack pointer is configured as <code>initial_rsp = stack_top.saturating_sub(48)</code>. This satisfies the mandatory 32-byte Microsoft x64 shadow spill space requirement and aligns the stack to a 16-byte boundary upon entry into <code>func()</code>.</li>
+</ul>
+<hr />
+<h2>Background Idle Thread (<code>idle</code>)</h2>
+<p>Task 1 is initialized as the background <code>idle</code> thread with <code>TaskPriority::Idle</code> (Priority 0):</p>
+<div class="codehilite"><pre><span></span><code><span class="k">fn</span><span class="w"> </span><span class="nf">idle_task_entry</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">loop</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">x86_64</span><span class="p">::</span><span class="n">instructions</span><span class="p">::</span><span class="n">interrupts</span><span class="p">::</span><span class="n">are_enabled</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">x86_64</span><span class="p">::</span><span class="n">instructions</span><span class="p">::</span><span class="n">hlt</span><span class="p">();</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">core</span><span class="p">::</span><span class="n">hint</span><span class="p">::</span><span class="n">spin_loop</span><span class="p">();</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>When no worker threads or shell tasks are runnable, the CPU enters the low-power halt state (<code>hlt</code>). The next timer tick or PS/2 keyboard interrupt automatically wakes the core to evaluate task readiness.</p>
+<hr />
+<h2>Public Multitasking API</h2>
+<p>The <a href="file:///d:/os/src/task/mod.rs"><code>src/task/mod.rs</code></a> module provides a unified public interface for thread management:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Function</th>
+<th style="text-align: left;">Signature</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>init</code></td>
+<td style="text-align: left;"><code>fn init(current_cr3: u64)</code></td>
+<td style="text-align: left;">Initializes scheduler, creates Task 0 (<code>shell</code>), and spawns Task 1 (<code>idle</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>is_active</code></td>
+<td style="text-align: left;"><code>fn is_active() -&gt; bool</code></td>
+<td style="text-align: left;">Returns true if the multitasking subsystem is active.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>spawn</code></td>
+<td style="text-align: left;"><code>fn spawn(name, entry_fn, priority) -&gt; TaskId</code></td>
+<td style="text-align: left;">Spawns a new concurrent kernel thread with a 16 KiB stack.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>yield_now</code></td>
+<td style="text-align: left;"><code>fn yield_now()</code></td>
+<td style="text-align: left;">Cooperatively relinquishes the remaining timeslice to the next task.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sleep_ms</code></td>
+<td style="text-align: left;"><code>fn sleep_ms(ms: u64)</code></td>
+<td style="text-align: left;">Suspends the calling task for a duration in milliseconds.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sleep_ticks</code></td>
+<td style="text-align: left;"><code>fn sleep_ticks(ticks: u64)</code></td>
+<td style="text-align: left;">Suspends the calling task for a specific number of 10ms PIT ticks.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>exit</code></td>
+<td style="text-align: left;"><code>fn exit() -&gt; !</code></td>
+<td style="text-align: left;">Marks the calling task as <code>Dead</code> and yields the CPU permanently.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>kill</code></td>
+<td style="text-align: left;"><code>fn kill(id: TaskId) -&gt; bool</code></td>
+<td style="text-align: left;">Terminates an active background thread by its Task ID.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>get_task_snapshots</code></td>
+<td style="text-align: left;"><code>fn get_task_snapshots() -&gt; Vec&lt;TaskSnapshot&gt;</code></td>
+<td style="text-align: left;">Captures diagnostic thread telemetry for shell commands.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Shell Commands for Task Inspection &amp; Control</h2>
+<p>Three built-in commands provide runtime task management in the interactive shell:</p>
+<h3>1. <code>ps</code> / <code>tasks</code> / <code>threads</code></h3>
+<p>Displays all registered tasks, thread states, priorities, CPU tick consumption, and stack pointers:</p>
+<div class="codehilite"><pre><span></span><code>hydra:/bin&gt; ps
+PID   NAME             STATE        PRIORITY        TICKS        STACK (RSP)
+---------------------------------------------------------------------------
+0     shell            Running      Normal              0 0x0000000000000000
+1     idle             Ready        Idle                0 0x00000000017a3150
+2     bg_worker        Ready        Normal              0 0x00000000017a8950
+---------------------------------------------------------------------------
+Total tasks: 3 | Timeslice: 50 ms | Worker counter: 0
+</code></pre></div>
+
+<h3>2. <code>spawn [worker]</code></h3>
+<p>Spawns a new concurrent background kernel thread executing a counter loop with <code>task::sleep_ms(100)</code>.</p>
+<div class="codehilite"><pre><span></span><code>hydra:/bin&gt; spawn worker
+[+] Spawned background worker task #2 ('bg_worker').
+    Type 'ps' to observe the task executing concurrently.
+</code></pre></div>
+
+<h3>3. <code>kill &lt;pid&gt;</code></h3>
+<p>Terminates an active background task by its numeric PID (system tasks PID 0 <code>shell</code> and PID 1 <code>idle</code> are protected from termination):</p>
+<div class="codehilite"><pre><span></span><code>hydra:/bin&gt; kill 2
+[+] Task #2 terminated.
+</code></pre></div>
+</div>
+
+
+
+<div id="doc-boot-stage10-shell" class="doc-section">
+    <div class="section-stage-badge">Stage 10: Interactive Shell &bull; Boot Sequence Order #27</div>
     <h1>Interactive Microkernel Shell Documentation</h1>
 <ul>
 <li><strong>Source Directory</strong>: <a href="file:///d:/os/src/shell/"><code>src/shell/</code></a></li>

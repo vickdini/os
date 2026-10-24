@@ -32,7 +32,7 @@ pub static ZFS_SERVER_ENDPOINT: SharedEndpoint = SharedEndpoint::new(ENDPOINT_ZF
 /// The Microkernel ZFS File Server
 pub struct ZfsServer {
     pub spa: Spa,
-    pub dmu: Dmu,
+    pub dmu: alloc::boxed::Box<Dmu>,
     pub root_dir_obj: u64,
     pub bin_dir_obj: u64,
 }
@@ -40,7 +40,7 @@ pub struct ZfsServer {
 impl ZfsServer {
     pub fn new() -> Self {
         let mut spa = Spa::new("hydrapool");
-        let mut dmu = Dmu::new();
+        let mut dmu = alloc::boxed::Box::new(Dmu::new());
 
         // 1. Create root directory
         let root_dir = dmu.allocate_object(DnodeType::Directory, "root").unwrap();

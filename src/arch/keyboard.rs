@@ -229,3 +229,76 @@ pub fn get_key() -> Key {
         }
     }
 }
+
+/// Configures the 8042 PS/2 keyboard controller to enable scanning and IRQ 1 interrupt generation.
+pub fn init() {
+    unsafe {
+        let mut status_port: Port<u8> = Port::new(0x64);
+        let mut data_port: Port<u8> = Port::new(0x60);
+
+        // 1. Drain any pending bytes in output buffer
+        for _ in 0..100 {
+            if (status_port.read() & 0x01) != 0 {
+                let _ = data_port.read();
+            } else {
+                break;
+            }
+        }
+
+        // 2. Enable first PS/2 port (Keyboard)
+        for _ in 0..100 {
+            if (status_port.read() & 0x02) == 0 {
+                status_port.write(0xAE);
+                break;
+            }
+        }
+
+        // 3. Read 8042 Controller Configuration Byte (Command 0x20)
+        for _ in 0..100 {
+            if (status_port.read() & 0x02) == 0 {
+                status_port.write(0x20);
+                break;
+            }
+        }
+        let mut config = 0u8;
+        for _ in 0..100 {
+            if (status_port.read() & 0x01) != 0 {
+                config = data_port.read();
+                break;
+            }
+        }
+
+        // 4. Enable IRQ 1 (bit 0 = 1) and enable first port clock (bit 4 = 0)
+        config |= 0x01; // Enable port 1 interrupt
+        config &= !0x10; // Enable port 1 clock
+
+        // 5. Write 8042 Controller Configuration Byte (Command 0x60)
+        for _ in 0..100 {
+            if (status_port.read() & 0x02) == 0 {
+                status_port.write(0x60);
+                break;
+            }
+        }
+        for _ in 0..100 {
+            if (status_port.read() & 0x02) == 0 {
+                data_port.write(config);
+                break;
+            }
+        }
+
+        // 6. Send 'Enable Scanning' command (0xF4) to the keyboard device
+        for _ in 0..100 {
+            if (status_port.read() & 0x02) == 0 {
+                data_port.write(0xF4);
+                break;
+            }
+        }
+        for _ in 0..100 {
+            if (status_port.read() & 0x01) != 0 {
+                let _ = data_port.read();
+                break;
+            }
+        }
+    }
+}
+

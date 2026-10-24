@@ -17,6 +17,7 @@ pub mod script;
 pub mod status;
 pub mod time;
 pub mod translate;
+pub mod task_cmds;
 pub mod video;
 pub mod zfs_cmds;
 
@@ -46,6 +47,7 @@ pub use misc::{ClearCommand, ColorCommand, EchoCommand, PanicCommand, ScrollLock
 pub use power::{HaltCommand, RebootCommand, ShutdownCommand};
 pub use script::ShCommand;
 pub use status::StatusCommand;
+pub use task_cmds::{KillCommand, PsCommand, SpawnCommand};
 pub use time::TimeCommand;
 pub use translate::{MapCommand, TranslateCommand, UnmapCommand};
 pub use video::VideoCommand;
@@ -117,6 +119,10 @@ pub static COMMANDS: &[&dyn Command] = &[
     &PanicCommand,
     &TrapCommand,
     &ExitBootCommand,
+    // Multitasking & Thread Management
+    &PsCommand,
+    &SpawnCommand,
+    &KillCommand,
     // Power Management
     &RebootCommand,
     &ShutdownCommand,

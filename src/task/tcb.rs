@@ -1,0 +1,188 @@
+use alloc::boxed::Box;
+use crate::arch::idt::ExceptionContext;
+use crate::capability::table::CapabilityTable;
+
+/// Unique 64-bit identifier for a kernel task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TaskId(pub u64);
+
+/// Lifecycle state of a thread/task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskState {
+    Ready,
+    Running,
+    Blocked,
+    Sleeping { wake_tick: u64 },
+    Dead,
+}
+
+impl TaskState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TaskState::Ready => "Ready",
+            TaskState::Running => "Running",
+            TaskState::Blocked => "Blocked",
+            TaskState::Sleeping { .. } => "Sleeping",
+            TaskState::Dead => "Dead",
+        }
+    }
+}
+
+/// Scheduling priority level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TaskPriority {
+    Idle = 0,
+    Low = 1,
+    Normal = 2,
+    High = 3,
+    Realtime = 4,
+}
+
+impl TaskPriority {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TaskPriority::Idle => "Idle",
+            TaskPriority::Low => "Low",
+            TaskPriority::Normal => "Normal",
+            TaskPriority::High => "High",
+            TaskPriority::Realtime => "Realtime",
+        }
+    }
+}
+
+/// Architectural CPU registers and execution context for x86_64 long mode.
+#[derive(Debug, Clone, Copy)]
+pub struct TaskRegisters {
+    pub r15: u64,
+    pub r14: u64,
+    pub r13: u64,
+    pub r12: u64,
+    pub rbp: u64,
+    pub rbx: u64,
+    pub r11: u64,
+    pub r10: u64,
+    pub r9: u64,
+    pub r8: u64,
+    pub rdi: u64,
+    pub rsi: u64,
+    pub rdx: u64,
+    pub rcx: u64,
+    pub rax: u64,
+    pub rip: u64,
+    pub cs: u64,
+    pub rflags: u64,
+    pub rsp: u64,
+    pub ss: u64,
+    pub cr3: u64,
+}
+
+impl TaskRegisters {
+    /// Creates an empty register state with standard 64-bit kernel segment selectors.
+    pub const fn empty() -> Self {
+        Self {
+            r15: 0,
+            r14: 0,
+            r13: 0,
+            r12: 0,
+            rbp: 0,
+            rbx: 0,
+            r11: 0,
+            r10: 0,
+            r9: 0,
+            r8: 0,
+            rdi: 0,
+            rsi: 0,
+            rdx: 0,
+            rcx: 0,
+            rax: 0,
+            rip: 0,
+            cs: 0x08,      // Hydra Kernel Code Segment
+            rflags: 0x202, // IF (Interrupt Flag) enabled
+            rsp: 0,
+            ss: 0x10,      // Hydra Kernel Data Segment
+            cr3: 0,
+        }
+    }
+
+    /// Captures register state from the hardware interrupt context frame.
+    pub fn save_from_context(&mut self, ctx: &ExceptionContext, cr3: u64) {
+        self.r15 = ctx.r15;
+        self.r14 = ctx.r14;
+        self.r13 = ctx.r13;
+        self.r12 = ctx.r12;
+        self.rbp = ctx.rbp;
+        self.rbx = ctx.rbx;
+        self.r11 = ctx.r11;
+        self.r10 = ctx.r10;
+        self.r9 = ctx.r9;
+        self.r8 = ctx.r8;
+        self.rdi = ctx.rdi;
+        self.rsi = ctx.rsi;
+        self.rdx = ctx.rdx;
+        self.rcx = ctx.rcx;
+        self.rax = ctx.rax;
+        self.rip = ctx.rip;
+        self.cs = ctx.cs;
+        self.rflags = ctx.rflags;
+        self.rsp = ctx.rsp;
+        self.ss = ctx.ss;
+        self.cr3 = cr3;
+    }
+
+    /// Restores saved register state into the hardware interrupt context frame before iretq.
+    pub fn restore_to_context(&self, ctx: &mut ExceptionContext) {
+        ctx.r15 = self.r15;
+        ctx.r14 = self.r14;
+        ctx.r13 = self.r13;
+        ctx.r12 = self.r12;
+        ctx.rbp = self.rbp;
+        ctx.rbx = self.rbx;
+        ctx.r11 = self.r11;
+        ctx.r10 = self.r10;
+        ctx.r9 = self.r9;
+        ctx.r8 = self.r8;
+        ctx.rdi = self.rdi;
+        ctx.rsi = self.rsi;
+        ctx.rdx = self.rdx;
+        ctx.rcx = self.rcx;
+        ctx.rax = self.rax;
+        ctx.rip = self.rip;
+        ctx.cs = self.cs;
+        ctx.rflags = self.rflags;
+        ctx.rsp = self.rsp;
+        ctx.ss = self.ss;
+    }
+}
+
+/// Task Control Block (TCB) representing a thread of execution in Hydra Microkernel.
+pub struct Task {
+    pub id: TaskId,
+    pub name: &'static str,
+    pub state: TaskState,
+    pub priority: TaskPriority,
+    pub regs: TaskRegisters,
+    pub stack: Option<Box<[u8]>>,
+    pub ticks_run: u64,
+    pub timeslice_remaining: u32,
+    pub cspace: Box<CapabilityTable>,
+}
+
+impl Task {
+    /// Creates a placeholder task descriptor for the already-executing main thread.
+    pub fn new_main(id: TaskId, name: &'static str, cr3: u64) -> Self {
+        let mut regs = TaskRegisters::empty();
+        regs.cr3 = cr3;
+
+        Self {
+            id,
+            name,
+            state: TaskState::Running,
+            priority: TaskPriority::Normal,
+            regs,
+            stack: None, // Uses existing firmware/boot stack
+            ticks_run: 0,
+            timeslice_remaining: 5,
+            cspace: Box::new(CapabilityTable::new()),
+        }
+    }
+}

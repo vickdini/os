@@ -207,10 +207,24 @@ DOCS_ORDER = [
         "subtitle": "UEFI GOP linear framebuffer discovery, 8x16 bitmap font, and autonomous pixel console.",
     },
     {
-        "stage": "Stage 9: Interactive Shell",
+        "stage": "Stage 9: Multitasking & Scheduler",
+        "title": "Task Control Block (TCB) & Thread State",
+        "file": "docs/src/task/tcb.md",
+        "anchor": "doc-boot-stage9-tcb",
+        "subtitle": "TCB architecture, register frame (TaskRegisters), lifecycle state machine, and heap stacks.",
+    },
+    {
+        "stage": "Stage 9: Multitasking & Scheduler",
+        "title": "Preemptive Multitasking & Context Switching",
+        "file": "docs/src/task/scheduler.md",
+        "anchor": "doc-boot-stage9-scheduler",
+        "subtitle": "Round-robin timeslicing at 100 Hz, iretq context switching, idle task, and task commands (ps, spawn, kill).",
+    },
+    {
+        "stage": "Stage 10: Interactive Shell",
         "title": "Interactive Microkernel Shell & Command REPL",
         "file": "docs/src/shell.md",
-        "anchor": "doc-boot-stage9-shell",
+        "anchor": "doc-boot-stage10-shell",
         "subtitle": "Command REPL, real-time memory/CPU inspection, CSpace manipulation, ZFS commands, and IPC testing.",
     },
 ]

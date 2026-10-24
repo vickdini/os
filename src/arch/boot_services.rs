@@ -68,12 +68,16 @@ pub fn take_hardware_ownership() -> Result<HardwareTakeoverStats, &'static str> 
         }
     }
     let cr3_frame = Cr3::read().0.start_address().as_u64();
+    crate::task::update_cr3(cr3_frame);
 
     // 7. Initialize and remap legacy 8259 dual-PIC (Master: IRQ 0..7 -> 32..39, Slave: IRQ 8..15 -> 40..47)
     crate::arch::pic::init();
 
     // 8. Initialize 8254 PIT timer to 100 Hz (10ms tick interval on IRQ 0)
     crate::arch::pit::init(100);
+
+    // 8b. Initialize 8042 PS/2 Keyboard Controller for IRQ 1 interrupts
+    crate::arch::keyboard::init();
 
     // 9. Enable CPU hardware interrupts (sti)
     x86_64::instructions::interrupts::enable();

@@ -359,6 +359,11 @@ extern "C" fn hydra_exception_handler(ctx: &mut ExceptionContext) {
             // Vector 32 = IRQ 0: 8254 PIT Timer Tick
             crate::arch::pit::on_timer_tick();
             crate::arch::pic::send_eoi(0);
+
+            // Preemptive Multitasking Round-Robin Scheduling
+            if crate::task::is_active() {
+                crate::task::SCHEDULER.lock().schedule(ctx);
+            }
         }
         33 => {
             // Vector 33 = IRQ 1: 8042 PS/2 Keyboard Scancode Available

@@ -11,6 +11,7 @@ pub mod fs;
 pub mod ipc;
 pub mod memory;
 pub mod shell;
+pub mod task;
 pub mod video;
 
 
@@ -295,9 +296,22 @@ fn main() -> Status {
     println!("    - Storage Pool: 'hydrapool' (8 MiB, Fletcher-4 Checksums, CoW enabled)");
     println!("    - Datasets: hydrapool/root (/), hydrapool/bin (/bin)");
 
+    // 8. Preemptive Multitasking & Scheduler Initialization
+    console::set_color(Color::Yellow, Color::Black);
+    println!("\n[*] Step 7: Initializing Multitasking Scheduler...");
+    let active_cr3 = x86_64::registers::control::Cr3::read().0.start_address().as_u64();
+    task::init(active_cr3);
+    console::set_color(Color::LightGreen, Color::Black);
+    println!("[+] Multitasking Subsystem Online:");
+    println!("    - Main Thread registered: Task #0 ('shell')");
+    println!("    - Background Idle Thread: Task #1 ('idle', priority 0)");
+    println!("    - Round-Robin Timeslice : {} ms (100 Hz timer tick preemption)",
+        task::scheduler::DEFAULT_TIMESLICE_TICKS * 10
+    );
+
     console::set_color(Color::LightCyan, Color::Black);
     println!("\n============================================================");
-    println!(" [+] HYDRA MICROKERNEL PHASE 1 SUBSYSTEMS OPERATIONAL!      ");
+    println!(" [+] HYDRA MICROKERNEL PHASE 1 & 2 SUBSYSTEMS OPERATIONAL!  ");
     println!("============================================================");
 
     // Hand over execution to the interactive microkernel shell
