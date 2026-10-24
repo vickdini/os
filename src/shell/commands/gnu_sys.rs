@@ -298,3 +298,54 @@ impl Command for FalseCommand {
         // Unsuccessful no-op
     }
 }
+
+/// Print system uptime, PIT timer ticks, and interrupt subsystem diagnostics.
+pub struct UptimeCommand;
+
+impl Command for UptimeCommand {
+    fn name(&self) -> &'static str {
+        "uptime"
+    }
+
+    fn description(&self) -> &'static str {
+        "Display system uptime, PIT timer ticks, and interrupt status"
+    }
+
+    fn usage(&self) -> &'static str {
+        "uptime"
+    }
+
+    fn execute(&self, _args: &[&str], _state: &mut ShellState) {
+        if crate::arch::pit::is_active() {
+            let total_sec = crate::arch::pit::uptime_seconds();
+            let hours = total_sec / 3600;
+            let minutes = (total_sec % 3600) / 60;
+            let seconds = total_sec % 60;
+            let ticks = crate::arch::pit::ticks();
+            let freq = crate::arch::pit::frequency_hz();
+
+            set_color(Color::LightGreen, Color::Black);
+            println!(
+                "[+] Uptime: {:02}:{:02}:{:02} ({} total seconds)",
+                hours, minutes, seconds, total_sec
+            );
+            set_color(Color::LightCyan, Color::Black);
+            println!(
+                "    - PIT Hardware Ticks : {} ticks @ {} Hz ({} ms interval)",
+                ticks, freq, if freq > 0 { 1000 / freq } else { 0 }
+            );
+            println!(
+                "    - CPU Interrupts     : {}",
+                if x86_64::instructions::interrupts::are_enabled() {
+                    "ENABLED (Hardware IRQ0 Timer & IRQ1 Keyboard active)"
+                } else {
+                    "DISABLED"
+                }
+            );
+        } else {
+            set_color(Color::Yellow, Color::Black);
+            println!("[-] PIT hardware timer is inactive (system running under UEFI Boot Services).");
+            println!("    Run 'exitboot' to activate the 8254 PIT timer and hardware interrupts.");
+        }
+    }
+}

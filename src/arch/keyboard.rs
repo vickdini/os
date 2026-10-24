@@ -4,25 +4,59 @@ use uefi::proto::console::text::{Key, ScanCode};
 use uefi::Char16;
 use x86_64::instructions::port::Port;
 
+const KEY_BUFFER_CAPACITY: usize = 128;
+
+struct KeyRingBuffer {
+    buffer: [Option<Key>; KEY_BUFFER_CAPACITY],
+    head: usize,
+    tail: usize,
+    count: usize,
+}
+
+impl KeyRingBuffer {
+    pub const fn new() -> Self {
+        Self {
+            buffer: [None; KEY_BUFFER_CAPACITY],
+            head: 0,
+            tail: 0,
+            count: 0,
+        }
+    }
+
+    pub fn push(&mut self, key: Key) {
+        if self.count < KEY_BUFFER_CAPACITY {
+            self.buffer[self.tail] = Some(key);
+            self.tail = (self.tail + 1) % KEY_BUFFER_CAPACITY;
+            self.count += 1;
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<Key> {
+        if self.count == 0 {
+            None
+        } else {
+            let key = self.buffer[self.head].take();
+            self.head = (self.head + 1) % KEY_BUFFER_CAPACITY;
+            self.count -= 1;
+            key
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+}
+
 static SHIFT_HELD: AtomicBool = AtomicBool::new(false);
 static CTRL_HELD: AtomicBool = AtomicBool::new(false);
 static EXTENDED_PREFIX: AtomicBool = AtomicBool::new(false);
 static KEYBOARD_LOCK: Mutex<()> = Mutex::new(());
+static KEY_BUFFER: Mutex<KeyRingBuffer> = Mutex::new(KeyRingBuffer::new());
 
-/// Reads a scancode non-blockingly from the standard 8042 PS/2 controller.
-pub fn read_key() -> Option<Key> {
-    let _guard = KEYBOARD_LOCK.lock();
-    let mut status_port: Port<u8> = Port::new(0x64);
-    let status = unsafe { status_port.read() };
-
-    // Bit 0: Output buffer full (1 = byte ready to read from port 0x60)
-    if (status & 0x01) == 0 {
-        return None;
-    }
-
-    let mut data_port: Port<u8> = Port::new(0x60);
-    let scancode = unsafe { data_port.read() };
-
+/// Processes a single raw Scancode Set 1 byte and updates modifier states.
+/// Returns Some(Key) if a printable or special key event completed.
+pub fn process_scancode(scancode: u8) -> Option<Key> {
     if scancode == 0xE0 {
         EXTENDED_PREFIX.store(true, Ordering::SeqCst);
         return None;
@@ -145,12 +179,53 @@ pub fn read_key() -> Option<Key> {
     None
 }
 
+/// Called exclusively by the IRQ 1 (Vector 33) interrupt service routine.
+pub fn on_keyboard_irq() {
+    let mut data_port: Port<u8> = Port::new(0x60);
+    let scancode = unsafe { data_port.read() };
+    if let Some(key) = process_scancode(scancode) {
+        let mut buffer = KEY_BUFFER.lock();
+        buffer.push(key);
+    }
+}
+
+/// Reads a key non-blockingly (first from the interrupt ring buffer, then fallback polling if interrupts disabled).
+pub fn read_key() -> Option<Key> {
+    // 1. Check if a key was captured asynchronously by the IRQ 1 handler
+    {
+        let mut buffer = KEY_BUFFER.lock();
+        if let Some(key) = buffer.pop() {
+            return Some(key);
+        }
+    }
+
+    // 2. Fallback polling if hardware interrupts are disabled (e.g. early init)
+    if !x86_64::instructions::interrupts::are_enabled() {
+        let _guard = KEYBOARD_LOCK.lock();
+        let mut status_port: Port<u8> = Port::new(0x64);
+        let status = unsafe { status_port.read() };
+
+        if (status & 0x01) != 0 {
+            let mut data_port: Port<u8> = Port::new(0x60);
+            let scancode = unsafe { data_port.read() };
+            return process_scancode(scancode);
+        }
+    }
+
+    None
+}
+
 /// Blocking wait for the next key from the PS/2 keyboard.
+/// Halts the CPU efficiently using `hlt` when interrupts are enabled.
 pub fn get_key() -> Key {
     loop {
         if let Some(key) = read_key() {
             return key;
         }
-        core::hint::spin_loop();
+        if x86_64::instructions::interrupts::are_enabled() {
+            x86_64::instructions::hlt();
+        } else {
+            core::hint::spin_loop();
+        }
     }
 }

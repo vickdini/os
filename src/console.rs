@@ -342,14 +342,18 @@ pub fn check_interrupt() -> bool {
 
 /// Delays execution for the specified duration.
 /// In UEFI mode, calls `uefi::boot::stall`.
-/// In standalone hardware mode, uses a spin loop calibrated against RDTSC.
+/// In standalone hardware mode, uses PIT hardware timer ticks (if interrupts active) or RDTSC spin loop.
 pub fn stall(duration: Duration) {
     if is_hardware_mode() {
-        let nanos = duration.as_nanos();
-        let cycles = (nanos as u64).saturating_mul(2);
-        let start = unsafe { core::arch::x86_64::_rdtsc() };
-        while unsafe { core::arch::x86_64::_rdtsc() }.wrapping_sub(start) < cycles {
-            core::hint::spin_loop();
+        if crate::arch::pit::is_active() && x86_64::instructions::interrupts::are_enabled() {
+            crate::arch::pit::sleep_ms(duration.as_millis() as u64);
+        } else {
+            let nanos = duration.as_nanos();
+            let cycles = (nanos as u64).saturating_mul(2);
+            let start = unsafe { core::arch::x86_64::_rdtsc() };
+            while unsafe { core::arch::x86_64::_rdtsc() }.wrapping_sub(start) < cycles {
+                core::hint::spin_loop();
+            }
         }
     } else {
         uefi::boot::stall(duration);

@@ -69,6 +69,15 @@ pub fn take_hardware_ownership() -> Result<HardwareTakeoverStats, &'static str> 
     }
     let cr3_frame = Cr3::read().0.start_address().as_u64();
 
+    // 7. Initialize and remap legacy 8259 dual-PIC (Master: IRQ 0..7 -> 32..39, Slave: IRQ 8..15 -> 40..47)
+    crate::arch::pic::init();
+
+    // 8. Initialize 8254 PIT timer to 100 Hz (10ms tick interval on IRQ 0)
+    crate::arch::pit::init(100);
+
+    // 9. Enable CPU hardware interrupts (sti)
+    x86_64::instructions::interrupts::enable();
+
     *done = true;
 
     // Clear display buffer and scrollback history so takeover begins on a clean screen
@@ -88,8 +97,9 @@ pub fn take_hardware_ownership() -> Result<HardwareTakeoverStats, &'static str> 
         selectors.tss_selector.0
     );
     println!("  - Interrupts & IDT   : Hydra 256 gates (Double Fault on TSS IST1)");
+    println!("  - IRQ & Hardware     : 8259 PIC Remapped [32..47], PIT Timer @ 100 Hz (STI active)");
     println!("  - Virtual Memory     : Autonomous PML4 Root at PhysAddr {:#x}", cr3_frame);
-    println!("  - Display & Input    : 1024x768 Linear Framebuffer & 8042 PS/2 Keyboard");
+    println!("  - Display & Input    : 1024x768 Linear Framebuffer & 8042 PS/2 Keyboard (IRQ 1)");
     println!("============================================================\n");
 
     Ok(HardwareTakeoverStats {

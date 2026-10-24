@@ -96,6 +96,27 @@ DOCS_ORDER = [
     },
     {
         "stage": "Stage 3: CPU Architecture",
+        "title": "8259 Programmable Interrupt Controller (PIC)",
+        "file": "docs/src/arch/pic.md",
+        "anchor": "doc-boot-stage3-pic",
+        "subtitle": "Dual-PIC architecture, IRQ remapping (vectors 32..47), cascade configuration, and EOI handling.",
+    },
+    {
+        "stage": "Stage 3: CPU Architecture",
+        "title": "8254 Programmable Interval Timer (PIT)",
+        "file": "docs/src/arch/pit.md",
+        "anchor": "doc-boot-stage3-pit",
+        "subtitle": "Hardware timer clock, Mode 3 square wave generator at 100 Hz, tick counter, and low-power CPU halts.",
+    },
+    {
+        "stage": "Stage 3: CPU Architecture",
+        "title": "8042 PS/2 Keyboard Controller & Input Buffer",
+        "file": "docs/src/arch/keyboard.md",
+        "anchor": "doc-boot-stage3-keyboard",
+        "subtitle": "Scancode Set 1 decoder, interrupt-driven circular ring buffer, modifier tracking, and sleep waits.",
+    },
+    {
+        "stage": "Stage 3: CPU Architecture",
         "title": "Hardware Takeover & ExitBootServices",
         "file": "docs/src/arch/boot_services.md",
         "anchor": "doc-boot-stage3-takeover",

@@ -32,7 +32,7 @@ pub use gnu_fs::{
     RmdirCommand, StatCommand, TouchCommand,
 };
 pub use gnu_sys::{
-    FalseCommand, SeqCommand, SleepCommand, TrueCommand, UnameCommand, WhoamiCommand, YesCommand,
+    FalseCommand, SeqCommand, SleepCommand, TrueCommand, UnameCommand, UptimeCommand, WhoamiCommand, YesCommand,
 };
 pub use gnu_text::{
     BasenameCommand, DirnameCommand, GrepCommand, HeadCommand, MoreCommand, TailCommand, WcCommand,
@@ -91,6 +91,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     // GNU Coreutils - System & Scripting
     &UnameCommand,
     &WhoamiCommand,
+    &UptimeCommand,
     &SleepCommand,
     &SeqCommand,
     &YesCommand,

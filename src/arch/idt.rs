@@ -355,17 +355,20 @@ extern "C" fn hydra_exception_handler(ctx: &mut ExceptionContext) {
 
             panic_halt();
         }
-        32..=47 => {
-            // Hardware IRQ from legacy 8259 PIC (Timer, Keyboard, Cascade, RTC, etc.)
-            unsafe {
-                if ctx.vector >= 40 {
-                    // Send EOI to Slave PIC
-                    x86_64::instructions::port::Port::<u8>::new(0xA0).write(0x20);
-                }
-                // Send EOI to Master PIC
-                x86_64::instructions::port::Port::<u8>::new(0x20).write(0x20);
-            }
-            // Non-fatal: returns from interrupt handler and resumes execution
+        32 => {
+            // Vector 32 = IRQ 0: 8254 PIT Timer Tick
+            crate::arch::pit::on_timer_tick();
+            crate::arch::pic::send_eoi(0);
+        }
+        33 => {
+            // Vector 33 = IRQ 1: 8042 PS/2 Keyboard Scancode Available
+            crate::arch::keyboard::on_keyboard_irq();
+            crate::arch::pic::send_eoi(1);
+        }
+        34..=47 => {
+            // Hardware IRQs from legacy 8259 PIC (Cascade, Serial, Floppy, RTC, etc.)
+            let irq = (ctx.vector - 32) as u8;
+            crate::arch::pic::send_eoi(irq);
         }
         20..=31 | 48..=255 => {
             // Spurious or unhandled interrupt / trap - return cleanly
